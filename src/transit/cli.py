@@ -28,6 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--file", required=True)
     compare = scenario_commands.add_parser("compare")
     compare.add_argument("--scenario", required=True)
+    compare.add_argument("--format", choices=("json", "csv"), default="json")
+    compare.add_argument("--output")
     return parser
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,7 +64,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"error_code=scenario.not_found_or_empty scenario_id={args.scenario}")
                 return 1
             result = {scope_id: {"base_value": base, "scenario_value": scenario, "delta_value": delta} for scope_id, base, scenario, delta in rows}
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            if args.format == "csv":
+                from .metrics import export_metrics_csv
+                target = Path(args.output or "metrics.csv")
+                export_metrics_csv(target, result)
+                print(f"output={target}")
+            else:
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         return 2
     finally:
@@ -70,4 +78,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

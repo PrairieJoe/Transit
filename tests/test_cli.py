@@ -44,3 +44,13 @@ def test_cli_scenario_compare_prints_persisted_metrics(tmp_path, capsys):
 
     assert main(["--db", str(db_path), "scenario", "compare", "--scenario", scenario_id]) == 0
     assert '"delta_value": 3' in capsys.readouterr().out
+
+
+def test_cli_scenario_compare_exports_csv(tmp_path, capsys):
+    db_path = tmp_path / "db.sqlite3"
+    scenario_id = run_scenario(Database(db_path), "export me", {"R1": 10}, {"R1": 13})["scenario_id"]
+    output = tmp_path / "metrics.csv"
+
+    assert main(["--db", str(db_path), "scenario", "compare", "--scenario", scenario_id, "--format", "csv", "--output", str(output)]) == 0
+    assert output.read_text(encoding="utf-8").splitlines() == ["scope_id,base_value,scenario_value,delta_value", "R1,10,13,3"]
+    assert f"output={output}" in capsys.readouterr().out

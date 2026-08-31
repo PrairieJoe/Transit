@@ -4,7 +4,7 @@ import sqlite3
 
 from transit.db import Database
 from transit.ingest import register_file
-from transit.metrics import compare_counts, export_geojson
+from transit.metrics import compare_counts, export_geojson, export_metrics_csv
 
 
 def test_register_card_csv_persists_dataset_and_transactions(tmp_path):
@@ -44,3 +44,13 @@ def test_export_geojson_writes_feature_collection(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["type"] == "FeatureCollection"
     assert payload["features"][0]["geometry"]["type"] == "LineString"
+
+
+def test_export_metrics_csv_writes_stable_metric_columns(tmp_path):
+    output = tmp_path / "metrics.csv"
+    export_metrics_csv(output, {"R1": {"base_value": 10, "scenario_value": 13, "delta_value": 3}})
+
+    assert output.read_text(encoding="utf-8").splitlines() == [
+        "scope_id,base_value,scenario_value,delta_value",
+        "R1,10,13,3",
+    ]
