@@ -32,6 +32,9 @@ export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedStops, setEditedStops] = useState<string[]>([])
+  const [headway, setHeadway] = useState(600)
+  const [serviceStart, setServiceStart] = useState('06:00')
+  const [serviceEnd, setServiceEnd] = useState('23:00')
 
   const refresh = async () => {
     const items = await get<Dataset[]>('/datasets')
@@ -64,12 +67,13 @@ export default function App() {
   }, [selectedDataset])
 
   const selected = useMemo(() => datasets.find(item => item.id === selectedDataset), [datasets, selectedDataset])
-  const startEdit = () => { if (selectedRoute) { setEditedStops([...selectedRoute.stops]); setEditMode(true) } }
+  const startEdit = () => { if (selectedRoute) { setEditedStops([...selectedRoute.stops]); setHeadway(600); setServiceStart('06:00'); setServiceEnd('23:00'); setEditMode(true) } }
   const removeLastStop = () => setEditedStops(stops => stops.length > 2 ? stops.slice(0, -1) : stops)
   const saveScenario = async () => {
-    if (!selectedRoute || editedStops.length === selectedRoute.stops.length) return
+    if (!selectedRoute) return
     try {
-      const response = await fetch(`${API}/scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${selectedRoute.id} 정류장 조정`, base_network_version: selectedDataset, changes: [{ change_type: 'REORDER_STOP', route_id: selectedRoute.id, stops: editedStops }] }) })
+      const changes = [{ change_type: 'REORDER_STOP', route_id: selectedRoute.id, stops: editedStops }, { change_type: 'CHANGE_HEADWAY', route_id: selectedRoute.id, headway_seconds: headway }, { change_type: 'CHANGE_SERVICE_WINDOW', route_id: selectedRoute.id, service_start_time: serviceStart, service_end_time: serviceEnd }]
+      const response = await fetch(`${API}/scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${selectedRoute.id} 정류장 조정`, base_network_version: selectedDataset, changes }) })
       if (!response.ok) throw new Error(await response.text())
       const scenario = await response.json()
       const run = await fetch(`${API}/scenarios/${scenario.id}/run`, { method: 'POST' })
@@ -105,7 +109,7 @@ export default function App() {
         <section className="map-panel"><div className="panel-title"><span>현황 지도</span><small>{selected?.name ?? '데이터셋 미선택'}</small></div><div className="map-placeholder" ref={mapContainer}>{!selectedDataset && <div className="map-copy"><span className="map-pin">＋</span><strong>노선 지도를 불러올 준비가 되었습니다</strong><span>왼쪽에서 데이터셋을 선택하세요.</span></div>}</div></section>
         <aside className="panel routes"><div className="panel-title"><span>노선 목록</span><small>{routes.length}개</small></div>{routes.map(route => <button className={`route ${selectedRoute?.id === route.id ? 'active' : ''}`} key={route.id} onClick={() => setSelectedRoute(route)}><strong>{route.id}</strong><span>{route.name}</span><small>{route.stops.length}개 정류장</small></button>)}{routes.length === 0 && <p className="empty">검증된 일별 데이터를 선택하면 노선이 표시됩니다.</p>}</aside>
       </section>
-      <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
+      <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <div className="edit-controls"><button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button><label>배차 <input type="number" min="60" step="60" value={headway} onChange={event => setHeadway(Number(event.target.value))} />초</label><label>운행 <input type="time" value={serviceStart} onChange={event => setServiceStart(event.target.value)} /> ~ <input type="time" value={serviceEnd} onChange={event => setServiceEnd(event.target.value)} /></label></div>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
       {metrics.length > 0 && <section className="results"><div className="panel-title"><span>Base vs Scenario</span><small>최근 실행 결과</small></div><table><thead><tr><th>범위</th><th>지표</th><th>Base</th><th>Scenario</th><th>변화</th></tr></thead><tbody>{metrics.map(metric => <tr key={`${metric.scope_type}-${metric.scope_id}-${metric.metric_name}`}><td>{metric.scope_id}</td><td>{metric.metric_name}</td><td>{metric.base_value.toFixed(1)}</td><td>{metric.scenario_value.toFixed(1)}</td><td className={metric.delta_value < 0 ? 'negative' : 'positive'}>{metric.delta_value > 0 ? '+' : ''}{metric.delta_value.toFixed(1)}</td></tr>)}</tbody></table></section>}
       <div className="message">{message}</div>
     </main>
