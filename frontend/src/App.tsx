@@ -6,6 +6,7 @@ type Route = { id: string; name: string; direction?: string; stops: string[]; co
 type Metric = { scope_type: string; scope_id: string; metric_name: string; base_value: number; scenario_value: number; delta_value: number }
 type DatasetDetail = Dataset & { mapping_status: string; files: { member_name: string; file_type: string; service_date?: string }[] }
 type Mapping = { source_file_type: string; source_column: string; canonical_field: string; confidence: number }
+type ValidationError = { error_code: string; field: string; message: string }
 
 const API = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
@@ -34,6 +35,7 @@ export default function App() {
   const [datasetDetail, setDatasetDetail] = useState<DatasetDetail | null>(null)
   const [mappingSuggestions, setMappingSuggestions] = useState<Mapping[]>([])
   const [mappingConfirmed, setMappingConfirmed] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const mapContainer = useRef<HTMLDivElement>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedStops, setEditedStops] = useState<string[]>([])
@@ -50,6 +52,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedDataset) return
     get<DatasetDetail>(`/datasets/${selectedDataset}`).then(setDatasetDetail).catch(error => setMessage(error.message))
+    get<{ errors: ValidationError[] }>(`/datasets/${selectedDataset}/validation`).then(result => setValidationErrors(result.errors)).catch(error => setMessage(error.message))
     get<{ suggestions: Mapping[] }>(`/datasets/${selectedDataset}/mapping`).then(result => setMappingSuggestions(result.suggestions)).catch(error => setMessage(error.message))
     get<Route[]>(`/networks/${selectedDataset}/routes`).then(setRoutes).catch(error => setMessage(error.message))
   }, [selectedDataset])
@@ -126,6 +129,7 @@ export default function App() {
       </div></section>
       {uploading && <div className="notice">압축파일을 분석하고 있습니다...</div>}
       {datasetDetail && <div className="quality-strip"><strong>{datasetDetail.quality_status === 'passed' ? '✓ 품질검사 통과' : '⚠ 품질검사 확인 필요'}</strong><span>매핑 {datasetDetail.mapping_status}</span><span>내부 파일 {datasetDetail.files.length}개</span><span>{[...new Set(datasetDetail.files.map(file => file.service_date).filter(Boolean))].join(', ') || '공통코드'}</span></div>}
+      {validationErrors.length > 0 && <section className="validation-errors"><strong>검증 오류 {validationErrors.length}건</strong>{validationErrors.slice(0, 8).map((error, index) => <div key={`${error.error_code}-${index}`}><code>{error.error_code}</code><span>{error.message}</span></div>)}{validationErrors.length > 8 && <small>처음 8건만 표시합니다.</small>}</section>}
       {mappingSuggestions.length > 0 && <section className="mapping-card"><div><p className="eyebrow">MAPPING REVIEW</p><strong>원천 필드를 표준 분석 필드에 연결</strong><p>컬럼 번호별 자동 제안을 검토한 뒤 확정하세요. 현재 제안 {mappingSuggestions.length}개</p></div><button className="secondary light" onClick={confirmMapping}>{mappingConfirmed ? '매핑 확정됨' : '매핑 확정'}</button></section>}
       <section className="workspace">
         <aside className="panel datasets"><div className="panel-title"><span>데이터셋</span><small>{datasets.length}개 등록</small></div>{datasets.length === 0 && <p className="empty">아직 등록된 데이터가 없습니다.</p>}{datasets.map(dataset => <button className={`dataset ${dataset.id === selectedDataset ? 'active' : ''}`} key={dataset.id} onClick={() => setSelectedDataset(dataset.id)}><span><strong>{dataset.name}</strong><small>{dataset.source_type} · {dataset.id}</small></span><em className={dataset.quality_status}>{dataset.quality_status}</em></button>)}</aside>
