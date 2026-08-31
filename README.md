@@ -130,7 +130,38 @@ Transit/
 
 ## 기술 스택
 
-기술 스택은 구현 범위와 운영 환경을 정의한 후 결정할 예정입니다.
+현재 MVP는 Python 3.11 이상과 SQLite를 사용합니다. OTP, OSRM, PostgreSQL/PostGIS, 외부 API 및 실시간 데이터 연동은 후속 범위입니다.
+
+## 로컬 실행
+
+```bash
+python -m pip install -e .
+python -m pytest -q
+```
+
+샘플 교통카드와 BIS 데이터를 등록합니다.
+
+```bash
+python -m transit.cli dataset register --file data/sample/cards.csv --type card
+python -m transit.cli dataset register --file data/sample/bis.csv --type bis
+python -m transit.cli demand summarize --dataset <card-dataset-id>
+python -m transit.cli scenario run --file data/sample/scenario.json
+```
+
+기본 SQLite 파일은 `data/transit.sqlite3`에 생성됩니다. 다른 경로를 사용하려면 `--db` 옵션을 지정할 수 있습니다.
+
+## 개발 상태
+
+현재 구현된 MVP 기반 기능은 다음과 같습니다.
+
+- CSV 교통카드·BIS 파일 등록 및 SQLite 저장
+- 필수 필드와 좌표 범위 품질검사
+- 관측·추정 불가 하차 상태 분리
+- 불변 버스 시나리오 변환
+- 기본 Logit 경로선택 계산
+- KPI 비교 및 GeoJSON export primitive
+
+세부 구현 기준과 후속 개발 순서는 [`docs/specs/transit-mvp-spec.md`](docs/specs/transit-mvp-spec.md)를 참고하세요.
 
 ## 라이선스
 
