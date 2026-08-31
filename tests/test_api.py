@@ -172,3 +172,14 @@ def test_api_blocks_scenario_run_until_mapping_is_confirmed(tmp_path):
 
     assert response.status_code == 422
     assert response.json()["detail"]["error_code"] == "dataset.not_ready"
+
+
+def test_api_persists_failed_run_when_network_cannot_be_built(tmp_path):
+    database = Database(tmp_path / "failed-run.sqlite3")
+    client = TestClient(create_app(database))
+    scenario = client.post("/scenarios", json={"name": "Missing network", "base_network_version": "missing", "changes": []}).json()
+
+    response = client.post(f"/scenarios/{scenario['id']}/run")
+
+    assert response.status_code == 422
+    assert database.query_one("SELECT status,error_code FROM scenario_runs WHERE scenario_id = ?", (scenario["id"],)) == ("failed", "scenario.run_failed")

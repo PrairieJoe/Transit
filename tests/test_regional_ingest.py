@@ -75,6 +75,19 @@ def test_register_regional_archive_persists_structured_quality_errors(tmp_path):
     assert database.query_one("SELECT COUNT(*) FROM routes WHERE source_dataset_id = ?", (result["dataset_id"],))[0] == 0
 
 
+def test_duplicate_regional_archive_reuses_original_quality_status(tmp_path):
+    archive_path = tmp_path / "DATA_20240420.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr("ROUTESTTN_20240420.dat", "20240420|03|MM|R1|Route|B|0|S1|Stop|91.0|127.0|~|0|0")
+    database_path = tmp_path / "regional.sqlite3"
+    first = register_regional_archive(database_path, archive_path, "DAILY")
+    second = register_regional_archive(database_path, archive_path, "DAILY")
+
+    assert first["quality_status"] == "failed"
+    assert second["reused"] is True
+    assert second["quality_status"] == "failed"
+
+
 def test_register_common_and_daily_archives_separately_in_one_database(tmp_path):
     database_path = tmp_path / "complete.sqlite3"
     common = register_regional_archive(database_path, ROOT / "data/sample/common/COMMONCD.zip", "COMMON")

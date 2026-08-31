@@ -279,10 +279,11 @@ def create_app(database: Database | None = None) -> FastAPI:
         changes = json.loads(payload[0]).get("changes", []) if payload else []
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         started_at = datetime.now(timezone.utc).isoformat()
+        db.execute("INSERT INTO scenario_runs (id,scenario_id,status,base_snapshot,started_at) VALUES (?,?,?,?,?)", (run_id, scenario_id, "running", "pending", started_at))
         try:
             network = build_network(db, scenario[1])
             base_snapshot = hashlib.sha256(json.dumps(network, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-            db.execute("INSERT INTO scenario_runs (id,scenario_id,status,base_snapshot,started_at) VALUES (?,?,?,?,?)", (run_id, scenario_id, "running", base_snapshot, started_at))
+            db.execute("UPDATE scenario_runs SET base_snapshot = ? WHERE id = ?", (base_snapshot, run_id))
             journeys = [{"id": row[0], "boarding_stop_id": row[1], "alighting_stop_id": row[2]} for row in db.query_all("SELECT id,boarding_stop_id,alighting_stop_id FROM card_transactions WHERE dataset_id = ?", (scenario[1],))]
             result = run_network_scenario(db, scenario[0], journeys, network, changes, scenario_id=scenario_id)
             result_snapshot = hashlib.sha256(json.dumps({"network": result["scenario_network"], "metrics": result["metrics"]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

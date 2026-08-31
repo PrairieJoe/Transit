@@ -158,7 +158,8 @@ def register_regional_archive(
     try:
         existing = database.query_one("SELECT id FROM datasets WHERE file_hash = ?", (archive_hash,))
         if existing:
-            return {**inspection, "dataset_id": existing[0], "quality_status": "passed", "reused": True}
+            quality_status = database.query_one("SELECT quality_status FROM datasets WHERE id = ?", (existing[0],))[0]
+            return {**inspection, "dataset_id": existing[0], "quality_status": quality_status, "reused": True}
         dataset_id = f"{source_type.lower()}-{archive_hash[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         database.execute(
