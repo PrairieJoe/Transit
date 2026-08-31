@@ -81,3 +81,16 @@ def test_cli_scenario_compare_exports_geojson_from_network(tmp_path, capsys):
     assert main(["--db", str(db_path), "scenario", "compare", "--scenario", scenario_id, "--format", "geojson", "--network", str(network), "--output", str(output)]) == 0
     assert json.loads(output.read_text(encoding="utf-8"))["type"] == "FeatureCollection"
     assert f"output={output}" in capsys.readouterr().out
+
+
+def test_cli_scenario_run_can_calculate_counts_from_journeys(tmp_path, capsys):
+    scenario_file = tmp_path / "network-scenario.json"
+    scenario_file.write_text(json.dumps({
+        "name": "calculate demand",
+        "journeys": [{"transaction_id": "T1", "boarding_stop_id": "S1", "alighting_stop_id": "S3"}],
+        "base_network": {"routes": {"R1": {"stops": ["S1", "S2", "S3"], "headway_seconds": 600}}},
+        "changes": [{"change_type": "CREATE_ROUTE", "route_id": "R2", "stops": ["S1", "S3"], "headway_seconds": 600}],
+    }), encoding="utf-8")
+
+    assert main(["--db", str(tmp_path / "db.sqlite3"), "scenario", "run", "--file", str(scenario_file)]) == 0
+    assert '"base_counts": {"R1": 1.0}' in capsys.readouterr().out

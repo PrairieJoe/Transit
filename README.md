@@ -146,6 +146,8 @@ python -m transit.cli dataset register --file data/sample/cards.csv --type card
 python -m transit.cli dataset register --file data/sample/bis.csv --type bis
 python -m transit.cli demand summarize --dataset <card-dataset-id>
 python -m transit.cli scenario run --file data/sample/scenario.json
+python -m transit.cli scenario compare --scenario <scenario-id> --format csv --output metrics.csv
+python -m transit.cli scenario compare --scenario <scenario-id> --format geojson --network network.json --output routes.geojson
 ```
 
 기본 SQLite 파일은 `data/transit.sqlite3`에 생성됩니다. 다른 경로를 사용하려면 `--db` 옵션을 지정할 수 있습니다.

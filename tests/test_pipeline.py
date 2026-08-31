@@ -3,7 +3,7 @@ import json
 
 from transit.db import Database
 from transit.ingest import register_file
-from transit.pipeline import summarize_card_demand, run_scenario
+from transit.pipeline import run_network_scenario, run_scenario, summarize_card_demand
 
 
 def test_summarize_card_demand_counts_routes(tmp_path):
@@ -44,3 +44,17 @@ def test_run_scenario_applies_route_changes_and_returns_network(tmp_path):
 
     assert result["scenario_network"]["routes"]["R2"]["stops"] == ["S2", "S3"]
     assert database.query_one("SELECT COUNT(*) FROM scenario_changes")[0] == 1
+
+
+def test_run_network_scenario_reassigns_journeys_after_route_change(tmp_path):
+    database = Database(tmp_path / "db.sqlite3")
+    journeys = [{"transaction_id": "T1", "boarding_stop_id": "S1", "alighting_stop_id": "S3"}]
+    network = {"routes": {"R1": {"stops": ["S1", "S2", "S3"], "headway_seconds": 600}}}
+
+    result = run_network_scenario(
+        database, "network assignment", journeys, network,
+        [{"change_type": "CREATE_ROUTE", "route_id": "R2", "stops": ["S1", "S3"], "headway_seconds": 600}],
+    )
+
+    assert result["base_counts"]["R1"] == 1.0
+    assert result["scenario_counts"]["R2"] > 0

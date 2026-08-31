@@ -32,3 +32,31 @@ def assign_logit(costs: dict[str, float], beta: float = 0.08) -> dict[str, float
     total = sum(utilities.values())
     return {key: value / total for key, value in utilities.items()}
 
+
+def assign_journeys(journeys: Iterable[Journey], network: dict[str, Any], beta: float = 0.08) -> dict[str, float]:
+    """Return expected route shares for journeys with known destinations.
+
+    The MVP uses stop-order compatibility and a deterministic proxy travel cost.
+    OTP/OSRM can replace this function behind a future router adapter.
+    """
+    totals: dict[str, float] = {}
+    for journey in journeys:
+        if journey.destination_stop_id is None:
+            continue
+        costs: dict[str, float] = {}
+        for route_id, route in network.get("routes", {}).items():
+            stops = route.get("stops", [])
+            if journey.origin_stop_id not in stops or journey.destination_stop_id not in stops:
+                continue
+            origin_index = stops.index(journey.origin_stop_id)
+            destination_index = stops.index(journey.destination_stop_id)
+            if destination_index <= origin_index:
+                continue
+            segment_count = destination_index - origin_index
+            speed_mps = float(route.get("speed_mps", 20_000 / 3_600))
+            travel_time = segment_count * 300 / speed_mps
+            waiting_time = float(route.get("headway_seconds", 600)) / 2
+            costs[route_id] = travel_time + waiting_time
+        for route_id, probability in assign_logit(costs, beta=beta).items():
+            totals[route_id] = totals.get(route_id, 0.0) + probability
+    return totals

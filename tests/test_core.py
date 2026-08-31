@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from transit.demand import assign_logit, build_journeys
+from transit.demand import assign_journeys, assign_logit, build_journeys
 from transit.ingest import validate_rows
 from transit.metrics import required_vehicles
 from transit.scenarios import apply_changes
@@ -58,3 +58,20 @@ def test_apply_changes_creates_route_without_mutating_base_network():
 
 def test_required_vehicles_rounds_up():
     assert required_vehicles(round_trip_time_seconds=3700, headway_seconds=600) == 7
+
+
+def test_assign_journeys_allocates_existing_demand_to_matching_routes():
+    journeys = build_journeys([
+        {"transaction_id": "T1", "boarding_stop_id": "S1", "alighting_stop_id": "S3"},
+    ])
+    network = {
+        "routes": {
+            "R1": {"stops": ["S1", "S2", "S3"], "headway_seconds": 600},
+            "R2": {"stops": ["S1", "S4", "S3"], "headway_seconds": 1200},
+        }
+    }
+
+    result = assign_journeys(journeys, network)
+
+    assert result["R1"] > result["R2"]
+    assert sum(result.values()) == pytest.approx(1.0)

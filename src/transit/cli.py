@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .db import Database
 from .ingest import register_file
-from .pipeline import run_scenario, summarize_card_demand
+from .pipeline import run_network_scenario, run_scenario, summarize_card_demand
 from .metrics import export_geojson
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,14 +53,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "scenario" and args.scenario_command == "run":
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
-            result = run_scenario(
-                database,
-                payload["name"],
-                payload["base_counts"],
-                payload["scenario_counts"],
-                payload.get("base_network"),
-                payload.get("changes"),
-            )
+            if "journeys" in payload:
+                result = run_network_scenario(
+                    database, payload["name"], payload["journeys"],
+                    payload["base_network"], payload.get("changes", []), payload.get("beta", 0.08),
+                )
+            else:
+                result = run_scenario(
+                    database, payload["name"], payload["base_counts"], payload["scenario_counts"],
+                    payload.get("base_network"), payload.get("changes"),
+                )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         if args.command == "scenario" and args.scenario_command == "compare":

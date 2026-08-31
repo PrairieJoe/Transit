@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .db import Database
+from .demand import Journey, assign_journeys
 from .metrics import compare_counts
 from .scenarios import apply_changes
 
@@ -47,3 +48,23 @@ def run_scenario(
     database.execute("UPDATE scenarios SET status = 'completed' WHERE id = ?", (scenario_id,))
     return {"scenario_id": scenario_id, "metrics": metrics, "scenario_network": scenario_network}
 
+
+def run_network_scenario(
+    database: Database,
+    name: str,
+    journeys: list[Journey | dict[str, Any]],
+    base_network: dict[str, Any],
+    changes: list[dict[str, Any]],
+    beta: float = 0.08,
+) -> dict:
+    normalized = [item if isinstance(item, Journey) else Journey(
+        id=str(item.get("id") or item.get("transaction_id")),
+        origin_stop_id=str(item["boarding_stop_id"]),
+        destination_stop_id=item.get("alighting_stop_id") or None,
+        destination_status="OBSERVED" if item.get("alighting_stop_id") else "UNKNOWN",
+    ) for item in journeys]
+    scenario_network = apply_changes(base_network, changes)
+    base_counts = assign_journeys(normalized, base_network, beta=beta)
+    scenario_counts = assign_journeys(normalized, scenario_network, beta=beta)
+    result = run_scenario(database, name, base_counts, scenario_counts, base_network, changes)
+    return {**result, "base_counts": base_counts, "scenario_counts": scenario_counts}
