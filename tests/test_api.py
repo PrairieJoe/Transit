@@ -143,11 +143,15 @@ def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
 
 
 def test_api_accepts_daily_zip_upload(tmp_path):
+    common_archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/common/COMMONCD.zip"
     archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
     client = TestClient(create_app(Database(tmp_path / "upload.sqlite3")))
 
+    common_response = client.post("/datasets/uploads/common", files={"file": (common_archive.name, common_archive.read_bytes(), "application/zip")})
     response = client.post("/datasets/uploads/daily", files={"file": (archive.name, archive.read_bytes(), "application/zip")})
 
+    assert common_response.status_code == 200
+    assert len(common_response.json()["members"]) == 5
     assert response.status_code == 200
     assert response.json()["service_date"] == "20240420"
 
