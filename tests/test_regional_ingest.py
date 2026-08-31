@@ -47,6 +47,10 @@ def test_register_regional_archive_indexes_members_and_service_date(tmp_path):
     from transit.db import Database
     database = Database(database_path)
     assert database.query_one("SELECT COUNT(*) FROM card_transactions WHERE dataset_id = ?", (result["dataset_id"],))[0] == 76708
+    transaction = database.query_one("SELECT route_id,boarding_stop_id,alighting_stop_id FROM card_transactions WHERE dataset_id = ? AND route_id IS NOT NULL LIMIT 1", (result["dataset_id"],))
+    assert transaction[0] == "46701133"
+    assert transaction[1] == "2737430"
+    assert transaction[2] is None
 
 
 def test_register_regional_archive_rejects_unknown_source_type(tmp_path):

@@ -105,8 +105,9 @@ def create_app(database: Database | None = None) -> FastAPI:
             {"source_file_type": "ROUTESTTN", "source_column": "9", "canonical_field": "latitude", "confidence": 0.99},
             {"source_file_type": "ROUTESTTN", "source_column": "10", "canonical_field": "longitude", "confidence": 0.99},
             {"source_file_type": "DWTCD", "source_column": "9", "canonical_field": "transaction_time", "confidence": 0.9},
-            {"source_file_type": "DWTCD", "source_column": "11", "canonical_field": "route_id", "confidence": 0.8},
-            {"source_file_type": "DWTCD", "source_column": "13", "canonical_field": "boarding_stop_id", "confidence": 0.8},
+            {"source_file_type": "DWTCD", "source_column": "13", "canonical_field": "route_id", "confidence": 0.98},
+            {"source_file_type": "DWTCD", "source_column": "17", "canonical_field": "boarding_stop_id", "confidence": 0.98},
+            {"source_file_type": "DWTCD", "source_column": "20", "canonical_field": "alighting_stop_id", "confidence": 0.98},
         ]
         return {"dataset_id": dataset_id, "saved": [dict(zip(("source_file_type", "source_column", "canonical_field", "confidence", "confirmed"), row)) for row in saved], "suggestions": suggestions}
 

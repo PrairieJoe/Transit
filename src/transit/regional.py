@@ -137,8 +137,9 @@ def _transaction_rows(rows: list[list[str]], dataset_id: str) -> list[tuple[str,
         source_key = f"{row[3]}|{row[9]}|{row[13]}|{index}"
         transaction_id = hashlib.sha256(source_key.encode()).hexdigest()[:32]
         journey_key = hashlib.sha256(row[3].encode()).hexdigest()[:32] if row[3] else None
-        alighting_stop = row[17] if len(row) > 17 and row[17] else None
-        result.append((transaction_id, dataset_id, row[9], journey_key, row[11] or None, row[13] or None, alighting_stop, row[21] or None if len(row) > 21 else None, "BOARDING", "OBSERVED" if alighting_stop else "UNKNOWN"))
+        boarding_stop = row[17] if len(row) > 17 and row[17] else None
+        alighting_stop = row[20] if len(row) > 20 and row[20] else None
+        result.append((transaction_id, dataset_id, row[9], journey_key, row[13] or None, boarding_stop, alighting_stop, row[21] or None if len(row) > 21 else None, "BOARDING", "OBSERVED" if alighting_stop else "UNKNOWN"))
     return result
 
 
