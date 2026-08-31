@@ -92,6 +92,19 @@ def _regional_quality_errors(archive: zipfile.ZipFile, members: list[dict[str, A
     errors: list[ValidationError] = []
     seen_sequences: set[tuple[str, int]] = set()
     for member in members:
+        if member["file_type"] == "DWTCD":
+            for row_number, row in enumerate(_member_rows(archive, member["member_name"]), start=1):
+                for position, field in ((9, "transaction_time"), (13, "route_id")):
+                    if len(row) <= position or row[position] == "":
+                        errors.append(ValidationError(f"{field}.missing", field, f"row {row_number}: required regional column {position} is missing"))
+                if len(row) > 9 and row[9]:
+                    try:
+                        datetime.strptime(row[9], "%Y%m%d%H%M%S")
+                    except ValueError:
+                        errors.append(ValidationError("transaction_time.invalid", "transaction_time", f"row {row_number}: invalid regional timestamp"))
+                if len(row) <= 20 or (not row[17] and not row[20]):
+                    errors.append(ValidationError("boarding_stop_id.missing", "boarding_stop_id", f"row {row_number}: no boarding stop was supplied"))
+            continue
         if member["file_type"] not in {"ROUTE", "ROUTESTTN", "STTN"}:
             continue
         for row_number, row in enumerate(_member_rows(archive, member["member_name"]), start=1):
@@ -137,7 +150,7 @@ def _transaction_rows(rows: list[list[str]], dataset_id: str) -> list[tuple[str,
         source_key = f"{row[3]}|{row[9]}|{row[13]}|{index}"
         transaction_id = hashlib.sha256(source_key.encode()).hexdigest()[:32]
         journey_key = hashlib.sha256(row[3].encode()).hexdigest()[:32] if row[3] else None
-        boarding_stop = row[17] if len(row) > 17 and row[17] else None
+        boarding_stop = row[17] if len(row) > 17 and row[17] else (row[20] if len(row) > 20 and row[20] else None)
         alighting_stop = row[20] if len(row) > 20 and row[20] else None
         result.append((transaction_id, dataset_id, row[9], journey_key, row[13] or None, boarding_stop, alighting_stop, row[21] or None if len(row) > 21 else None, "BOARDING", "OBSERVED" if alighting_stop else "UNKNOWN"))
     return result
