@@ -89,24 +89,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"scenario_id={scenario_id}")
             return 0
         if args.command == "scenario" and args.scenario_command == "run":
-            if args.file:
-                payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
-            else:
-                row = database.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (args.scenario,))
-                if row is None:
-                    print(f"error_code=scenario.not_found scenario_id={args.scenario}")
-                    return 1
-                payload = json.loads(row[0])
-            if "journeys" in payload:
-                result = run_network_scenario(
-                    database, payload["name"], payload["journeys"],
-                    payload["base_network"], payload.get("changes", []), payload.get("beta", 0.08), args.scenario,
-                )
-            else:
-                result = run_scenario(
-                    database, payload["name"], payload["base_counts"], payload["scenario_counts"],
-                    payload.get("base_network"), payload.get("changes"), scenario_id=args.scenario,
-                )
+            try:
+                if args.file:
+                    payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+                else:
+                    row = database.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (args.scenario,))
+                    if row is None:
+                        print(json.dumps({"error_code": "scenario.not_found", "scenario_id": args.scenario}, ensure_ascii=False))
+                        return 1
+                    payload = json.loads(row[0])
+                if "journeys" in payload:
+                    result = run_network_scenario(
+                        database, payload["name"], payload["journeys"],
+                        payload["base_network"], payload.get("changes", []), payload.get("beta", 0.08), args.scenario,
+                    )
+                else:
+                    result = run_scenario(
+                        database, payload["name"], payload["base_counts"], payload["scenario_counts"],
+                        payload.get("base_network"), payload.get("changes"), scenario_id=args.scenario,
+                    )
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+                print(json.dumps({"error_code": "scenario.invalid", "message": str(error), "scenario_id": args.scenario}, ensure_ascii=False))
+                return 1
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         if args.command == "scenario" and args.scenario_command == "compare":

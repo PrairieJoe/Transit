@@ -192,6 +192,7 @@ app = create_app(Database("data/transit.sqlite3"))
 - `GET /scenarios/{scenario_id}/metrics/detail` (노선·정류장·OD·네트워크 범위)
 
 `dataset validate`는 `dataset_id`, `quality_status`, `errors[{error_code, field, message}]` 구조의 JSON을 출력합니다.
+시나리오 실행 실패도 `error_code`, `message`, `scenario_id` 구조의 JSON으로 반환되며, 해당 시나리오는 `failed` 상태로 보존됩니다.
 
 ## 라이선스
 

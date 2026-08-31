@@ -138,3 +138,14 @@ def test_cli_scenario_create_then_run_by_id(tmp_path, capsys):
     output = capsys.readouterr().out
     assert f'"scenario_id": "{scenario_id}"' in output
     assert '"delta_value": 1' in output
+
+
+def test_cli_scenario_invalid_input_returns_structured_error(tmp_path, capsys):
+    scenario_file = tmp_path / "invalid.json"
+    scenario_file.write_text(json.dumps({
+        "name": "invalid", "base_counts": {"R1": 1}, "scenario_counts": {"R1": 1},
+        "base_network": {"routes": {"R1": {"stops": ["S1"]}}},
+        "changes": [{"change_type": "ADD_STOP", "route_id": "missing", "stop_id": "S2"}],
+    }), encoding="utf-8")
+    assert main(["--db", str(tmp_path / "db.sqlite3"), "scenario", "run", "--file", str(scenario_file)]) == 1
+    assert json.loads(capsys.readouterr().out)["error_code"] == "scenario.invalid"

@@ -62,6 +62,17 @@ def test_register_invalid_card_persists_structured_validation_errors(tmp_path):
     assert {"transaction_id.duplicate", "transaction_time.invalid"} <= codes
 
 
+def test_register_card_preserves_inferred_alighting_status(tmp_path):
+    source = tmp_path / "inferred.csv"
+    source.write_text(
+        "transaction_id,transaction_time,boarding_stop_id,alighting_stop_id,alighting_status\n"
+        "T1,2026-08-31T08:00:00,S1,S2,INFERRED\n", encoding="utf-8"
+    )
+    database = Database(tmp_path / "db.sqlite3")
+    dataset_id = register_file(database, source, "CARD")
+    assert database.query_one("SELECT alighting_status FROM card_transactions WHERE dataset_id = ?", (dataset_id,))[0] == "INFERRED"
+
+
 def test_compare_counts_returns_base_scenario_and_delta():
     result = compare_counts({"R1": 10}, {"R1": 13, "R2": 2})
 

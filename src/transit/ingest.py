@@ -155,7 +155,7 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
         for row in rows:
             database.execute(
                 "INSERT INTO card_transactions (id,dataset_id,transaction_time,journey_key,route_id,boarding_stop_id,alighting_stop_id,transfer_group_id,transaction_type,alighting_status) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (row["transaction_id"], dataset_id, row["transaction_time"], row.get("journey_key"), row.get("route_id"), row["boarding_stop_id"], row.get("alighting_stop_id"), row.get("transfer_id"), row.get("transaction_type", "BOARDING"), "OBSERVED" if row.get("alighting_stop_id") else "UNKNOWN"),
+                (row["transaction_id"], dataset_id, row["transaction_time"], row.get("journey_key"), row.get("route_id"), row["boarding_stop_id"], row.get("alighting_stop_id"), row.get("transfer_id"), row.get("transaction_type", "BOARDING"), row.get("alighting_status") or row.get("destination_status") or ("OBSERVED" if row.get("alighting_stop_id") else "UNKNOWN")),
             )
     else:
         for row in rows:
