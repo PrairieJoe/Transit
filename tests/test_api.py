@@ -1,6 +1,8 @@
 from transit.api.app import create_app
 from transit.db import Database
 from transit.pipeline import run_scenario
+from transit.regional import register_regional_archive
+from fastapi.testclient import TestClient
 
 
 def test_api_exposes_health_and_scenario_metrics(tmp_path):
@@ -33,3 +35,78 @@ def test_api_exposes_detailed_scenario_metrics(tmp_path):
     endpoint = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/metrics/detail")
     details = endpoint(result["scenario_id"])
     assert details[0]["scope_type"] == "ROUTE"
+
+
+def test_api_lists_regional_datasets_and_routes(tmp_path):
+    database_path = tmp_path / "regional-api.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    app = create_app(Database(database_path))
+
+    datasets = next(route.endpoint for route in app.routes if route.path == "/datasets")()
+    routes = next(route.endpoint for route in app.routes if route.path == "/networks/{network_version}/routes")(registered["dataset_id"])
+
+    assert datasets[0]["id"] == registered["dataset_id"]
+    assert len(routes) > 0
+    assert {"id", "name", "stops"} <= routes[0].keys()
+
+
+def test_api_creates_and_reads_scenario_draft(tmp_path):
+    database = Database(tmp_path / "scenario-api.sqlite3")
+    app = create_app(database)
+    create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
+    read = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}")
+
+    created = create({
+        "name": "정류장 조정",
+        "base_network_version": "base-v1",
+        "changes": [{"change_type": "REMOVE_STOP", "route_id": "R1", "stop_id": "S2"}],
+    })
+
+    assert created["status"] == "draft"
+    assert read(created["id"])["changes"][0]["change_type"] == "REMOVE_STOP"
+
+
+def test_api_returns_network_geojson_and_mapping(tmp_path):
+    database_path = tmp_path / "geo.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    database = Database(database_path)
+    app = create_app(database)
+    mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping")
+    geojson = next(route.endpoint for route in app.routes if route.path == "/networks/{network_version}/geojson")
+
+    saved = mapping(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_column": "route_id", "canonical_field": "route_id"}]})
+    result = geojson(registered["dataset_id"])
+
+    assert saved["mapping_status"] == "confirmed"
+    assert result["type"] == "FeatureCollection"
+    assert result["features"]
+
+
+def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
+    database_path = tmp_path / "e2e.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    database = Database(database_path)
+    app = create_app(database)
+    create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
+    run = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/run")
+    routes_before = database.query_one("SELECT COUNT(*) FROM route_stops")[0]
+    scenario = create({"name": "regional e2e", "base_network_version": registered["dataset_id"], "changes": [{"change_type": "REMOVE_STOP", "route_id": "46001001", "stop_id": "4600433"}]})
+
+    result = run(scenario["id"])
+
+    assert result["status"] == "completed"
+    assert database.query_one("SELECT COUNT(*) FROM route_stops")[0] == routes_before
+    assert database.query_one("SELECT status FROM scenarios WHERE id = ?", (scenario["id"],))[0] == "completed"
+
+
+def test_api_accepts_daily_zip_upload(tmp_path):
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    client = TestClient(create_app(Database(tmp_path / "upload.sqlite3")))
+
+    response = client.post("/datasets/uploads/daily", files={"file": (archive.name, archive.read_bytes(), "application/zip")})
+
+    assert response.status_code == 200
+    assert response.json()["service_date"] == "20240420"

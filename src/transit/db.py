@@ -14,6 +14,19 @@ CREATE TABLE IF NOT EXISTS validation_errors (
   field TEXT NOT NULL, message TEXT NOT NULL,
   FOREIGN KEY (dataset_id) REFERENCES datasets(id)
 );
+CREATE TABLE IF NOT EXISTS dataset_files (
+  id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL, archive_name TEXT NOT NULL,
+  member_name TEXT NOT NULL, file_type TEXT NOT NULL, file_hash TEXT NOT NULL,
+  service_date TEXT, created_at TEXT NOT NULL,
+  FOREIGN KEY (dataset_id) REFERENCES datasets(id)
+);
+CREATE TABLE IF NOT EXISTS dataset_mappings (
+  dataset_id TEXT NOT NULL, source_file_type TEXT NOT NULL,
+  source_column TEXT NOT NULL, canonical_field TEXT NOT NULL,
+  confidence REAL NOT NULL, confirmed INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (dataset_id, source_file_type, source_column),
+  FOREIGN KEY (dataset_id) REFERENCES datasets(id)
+);
 CREATE TABLE IF NOT EXISTS stops (
   id TEXT PRIMARY KEY, source_dataset_id TEXT NOT NULL, source_stop_id TEXT NOT NULL,
   name TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL,
@@ -57,6 +70,13 @@ CREATE TABLE IF NOT EXISTS metric_results (
   id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, scope_type TEXT NOT NULL,
   scope_id TEXT NOT NULL, metric_name TEXT NOT NULL, base_value REAL,
   scenario_value REAL, delta_value REAL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scenario_runs (
+  id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','running','completed','failed')),
+  base_snapshot TEXT NOT NULL, result_snapshot TEXT,
+  error_code TEXT, error_message TEXT, started_at TEXT, completed_at TEXT,
+  FOREIGN KEY (scenario_id) REFERENCES scenarios(id)
 );
 """
 

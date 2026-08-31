@@ -184,6 +184,16 @@ from transit.db import Database
 app = create_app(Database("data/transit.sqlite3"))
 ```
 
+로컬에서 API를 직접 확인하려면 다음 명령을 실행합니다.
+
+```bash
+python -m pip install -e ".[api,dev,parquet]"
+python -m uvicorn transit.api.server:app --reload
+```
+
+브라우저에서 [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) 또는
+[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)를 열어 확인할 수 있습니다.
+
 제공 endpoint:
 
 - `GET /health`
@@ -191,6 +201,26 @@ app = create_app(Database("data/transit.sqlite3"))
   - `?scope=route` (기본값) 또는 `?scope=stop`
 - `GET /scenarios/{scenario_id}/metrics`
 - `GET /scenarios/{scenario_id}/metrics/detail` (노선·정류장·OD·네트워크 범위)
+
+## 웹 UI
+
+2차 MVP 웹 UI는 `frontend/`에 있습니다. FastAPI를 먼저 실행한 뒤 별도 터미널에서 프론트엔드를 시작합니다.
+
+```bash
+python -m uvicorn transit.api.server:app --reload
+cd frontend
+npm install
+npm run dev
+```
+
+웹 화면에서 `COMMONCD.zip`과 일자별 `DATA_YYYYMMDD.zip`을 각각 업로드하고, 등록된 일별 데이터셋의 노선을 선택할 수 있습니다. 노선 편집을 시작하면 기존 노선의 마지막 정류장을 삭제한 draft 시나리오를 저장·실행할 수 있습니다. API 주소를 바꾸려면 `VITE_API_URL` 환경변수를 지정합니다.
+
+프론트엔드 production build 검증:
+
+```bash
+cd frontend
+npm run build
+```
 
 `dataset validate`는 `dataset_id`, `quality_status`, `errors[{error_code, field, message}]` 구조의 JSON을 출력합니다.
 시나리오 실행 실패도 `error_code`, `message`, `scenario_id` 구조의 JSON으로 반환되며, 해당 시나리오는 `failed` 상태로 보존됩니다.

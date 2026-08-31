@@ -1,7 +1,15 @@
-"""FastAPI read API for the Transit MVP."""
-from fastapi import FastAPI, HTTPException
+"""FastAPI API for data registration, map browsing, and scenarios."""
+import json
+import shutil
+import uuid
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from ..db import Database
+from ..network import build_network
+from ..pipeline import run_network_scenario
+from ..regional import RegionalArchiveError, register_regional_archive
 
 def create_app(database: Database | None = None) -> FastAPI:
     app = FastAPI(title="Transit API", version="0.1.0")
@@ -10,6 +18,102 @@ def create_app(database: Database | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/datasets")
+    def datasets() -> list[dict]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        return [
+            {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "created_at": row[4]}
+            for row in db.query_all("SELECT id,name,source_type,quality_status,created_at FROM datasets ORDER BY created_at DESC")
+        ]
+
+    def _upload_archive(upload: UploadFile, source_type: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        if not upload.filename or not upload.filename.lower().endswith(".zip"):
+            raise HTTPException(status_code=422, detail={"error_code": "archive.invalid", "message": "a ZIP file is required"})
+        upload_dir = db.path.parent / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        destination = upload_dir / f"{uuid.uuid4().hex}-{Path(upload.filename).name}"
+        with destination.open("wb") as stream:
+            shutil.copyfileobj(upload.file, stream)
+        try:
+            return register_regional_archive(db.path, destination, source_type)
+        except RegionalArchiveError as error:
+            raise HTTPException(status_code=422, detail={"error_code": "archive.invalid", "message": str(error)}) from error
+
+    @app.post("/datasets/uploads/common")
+    def upload_common(file: UploadFile = File(...)) -> dict:
+        return _upload_archive(file, "COMMON")
+
+    @app.post("/datasets/uploads/daily")
+    def upload_daily(file: UploadFile = File(...)) -> dict:
+        return _upload_archive(file, "DAILY")
+
+    @app.get("/datasets/{dataset_id}")
+    def dataset_detail(dataset_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        row = db.query_one("SELECT id,name,source_type,quality_status,created_at FROM datasets WHERE id = ?", (dataset_id,))
+        if not row:
+            raise HTTPException(status_code=404, detail="dataset not found")
+        files = db.query_all("SELECT archive_name,member_name,file_type,file_hash,service_date FROM dataset_files WHERE dataset_id = ? ORDER BY member_name", (dataset_id,))
+        return {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "created_at": row[4], "files": [dict(zip(("archive_name", "member_name", "file_type", "file_hash", "service_date"), item)) for item in files]}
+
+    @app.get("/datasets/{dataset_id}/validation")
+    def dataset_validation(dataset_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        row = db.query_one("SELECT quality_status FROM datasets WHERE id = ?", (dataset_id,))
+        if not row:
+            raise HTTPException(status_code=404, detail="dataset not found")
+        errors = db.query_all("SELECT error_code,field,message FROM validation_errors WHERE dataset_id = ?", (dataset_id,))
+        return {"dataset_id": dataset_id, "quality_status": row[0], "errors": [dict(zip(("error_code", "field", "message"), item)) for item in errors]}
+
+    @app.post("/datasets/{dataset_id}/mapping")
+    def save_mapping(dataset_id: str, payload: dict) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        if not db.query_one("SELECT id FROM datasets WHERE id = ?", (dataset_id,)):
+            raise HTTPException(status_code=404, detail="dataset not found")
+        for mapping in payload.get("mappings", []):
+            db.execute("INSERT OR REPLACE INTO dataset_mappings (dataset_id,source_file_type,source_column,canonical_field,confidence,confirmed) VALUES (?,?,?,?,?,?)", (dataset_id, mapping.get("source_file_type", "UNKNOWN"), mapping["source_column"], mapping["canonical_field"], float(mapping.get("confidence", 1.0)), int(bool(payload.get("confirmed")))))
+        return {"dataset_id": dataset_id, "mapping_status": "confirmed" if payload.get("confirmed") else "pending"}
+
+    @app.get("/networks/{network_version}/routes")
+    def network_routes(network_version: str) -> list[dict]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        try:
+            network = build_network(db, network_version)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="network not found")
+        return [{"id": route_id, "name": route["name"], "direction": route.get("direction"), "stops": route["stops"], "coordinates": route["coordinates"]} for route_id, route in network["routes"].items()]
+
+    @app.get("/networks/{network_version}/geojson")
+    def network_geojson(network_version: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        try:
+            network = build_network(db, network_version)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="network not found")
+        return {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": route["coordinates"]}, "properties": {"route_id": route_id, "name": route["name"], "direction": route.get("direction"), "stops": route["stops"]}} for route_id, route in network["routes"].items()]}
+
+    @app.get("/routes/{route_id}")
+    def route_detail(route_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        row = db.query_one("SELECT id,source_route_id,name,direction,source_dataset_id FROM routes WHERE id = ? OR source_route_id = ?", (route_id, route_id))
+        if not row:
+            raise HTTPException(status_code=404, detail="route not found")
+        stops = db.query_all("SELECT s.source_stop_id,s.name,s.latitude,s.longitude,rs.stop_sequence FROM route_stops rs JOIN stops s ON s.id=rs.stop_id WHERE rs.route_id=? ORDER BY rs.stop_sequence", (row[0],))
+        return {"id": row[1], "name": row[2], "direction": row[3], "dataset_id": row[4], "stops": [{"id": item[0], "name": item[1], "latitude": item[2], "longitude": item[3], "sequence": item[4]} for item in stops]}
+
+    @app.get("/routes/{route_id}/stops")
+    def route_stops(route_id: str) -> list[dict]:
+        return route_detail(route_id)["stops"]
 
     @app.get("/datasets/{dataset_id}/demand")
     def dataset_demand(dataset_id: str, scope: str = "route") -> dict:
@@ -72,5 +176,61 @@ def create_app(database: Database | None = None) -> FastAPI:
              "base_value": base, "scenario_value": scenario, "delta_value": delta}
             for scope_type, scope_id, metric_name, base, scenario, delta in rows
         ]
+
+    @app.post("/scenarios")
+    def create_scenario(payload: dict) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        scenario_id = f"scenario-{uuid.uuid4().hex[:12]}"
+        changes = payload.get("changes", [])
+        database_version = payload.get("base_network_version", "base-v1")
+        db.execute("INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,datetime('now'))", (scenario_id, payload.get("name", "Untitled scenario"), database_version, "draft"))
+        db.execute("INSERT INTO scenario_inputs (scenario_id,payload_json) VALUES (?,?)", (scenario_id, json.dumps(payload, ensure_ascii=False)))
+        for change in changes:
+            db.execute("INSERT INTO scenario_changes (id,scenario_id,change_type,payload_json) VALUES (?,?,?,?)", (uuid.uuid4().hex, scenario_id, change["change_type"], json.dumps(change, ensure_ascii=False)))
+        return {"id": scenario_id, "name": payload.get("name", "Untitled scenario"), "base_network_version": database_version, "status": "draft", "changes": changes}
+
+    @app.get("/scenarios")
+    def scenarios() -> list[dict]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        return [{"id": row[0], "name": row[1], "base_network_version": row[2], "status": row[3], "created_at": row[4]} for row in db.query_all("SELECT id,name,base_network_version,status,created_at FROM scenarios ORDER BY created_at DESC")]
+
+    @app.get("/scenarios/{scenario_id}")
+    def scenario_detail(scenario_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        row = db.query_one("SELECT id,name,base_network_version,status,created_at FROM scenarios WHERE id = ?", (scenario_id,))
+        if not row:
+            raise HTTPException(status_code=404, detail="scenario not found")
+        changes = db.query_all("SELECT payload_json FROM scenario_changes WHERE scenario_id = ? ORDER BY rowid", (scenario_id,))
+        return {"id": row[0], "name": row[1], "base_network_version": row[2], "status": row[3], "created_at": row[4], "changes": [json.loads(item[0]) for item in changes]}
+
+    @app.get("/scenarios/{scenario_id}/status")
+    def scenario_status(scenario_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        row = db.query_one("SELECT status FROM scenarios WHERE id = ?", (scenario_id,))
+        if not row:
+            raise HTTPException(status_code=404, detail="scenario not found")
+        return {"scenario_id": scenario_id, "status": row[0]}
+
+    @app.post("/scenarios/{scenario_id}/run")
+    def run_saved_scenario(scenario_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        scenario = db.query_one("SELECT name,base_network_version,status FROM scenarios WHERE id = ?", (scenario_id,))
+        if not scenario:
+            raise HTTPException(status_code=404, detail="scenario not found")
+        payload = db.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (scenario_id,))
+        changes = json.loads(payload[0]).get("changes", []) if payload else []
+        try:
+            network = build_network(db, scenario[1])
+            journeys = [{"id": row[0], "boarding_stop_id": row[1], "alighting_stop_id": row[2]} for row in db.query_all("SELECT id,boarding_stop_id,alighting_stop_id FROM card_transactions WHERE dataset_id = ?", (scenario[1],))]
+            result = run_network_scenario(db, scenario[0], journeys, network, changes, scenario_id=scenario_id)
+            return {"scenario_id": scenario_id, "status": "completed", "metrics": result["metrics"]}
+        except (KeyError, TypeError, ValueError) as error:
+            db.execute("UPDATE scenarios SET status = 'failed' WHERE id = ?", (scenario_id,))
+            raise HTTPException(status_code=422, detail={"error_code": "scenario.run_failed", "message": str(error), "scenario_id": scenario_id}) from error
 
     return app

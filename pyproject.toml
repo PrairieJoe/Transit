@@ -5,7 +5,7 @@ description = "Transit demand analysis and bus scenario platform"
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
-api = ["fastapi>=0.100"]
+api = ["fastapi>=0.100", "python-multipart>=0.0.9"]
 parquet = ["pyarrow>=12"]
 dev = ["pytest>=8"]
 
