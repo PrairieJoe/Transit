@@ -26,6 +26,10 @@ def create_app(database: Database | None = None) -> FastAPI:
     )
     db = database
 
+    def _mapping_status(dataset_id: str) -> str:
+        fields = {row[0] for row in db.query_all("SELECT DISTINCT canonical_field FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1", (dataset_id,))}
+        return "confirmed" if REQUIRED_REGIONAL_MAPPING_FIELDS <= fields else "pending"
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -70,8 +74,7 @@ def create_app(database: Database | None = None) -> FastAPI:
         if not row:
             raise HTTPException(status_code=404, detail="dataset not found")
         files = db.query_all("SELECT archive_name,member_name,file_type,file_hash,service_date FROM dataset_files WHERE dataset_id = ? ORDER BY member_name", (dataset_id,))
-        confirmed = db.query_one("SELECT COUNT(*) FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1", (dataset_id,))[0]
-        return {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "mapping_status": "confirmed" if confirmed else "pending", "created_at": row[4], "files": [dict(zip(("archive_name", "member_name", "file_type", "file_hash", "service_date"), item)) for item in files]}
+        return {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "mapping_status": _mapping_status(dataset_id), "created_at": row[4], "files": [dict(zip(("archive_name", "member_name", "file_type", "file_hash", "service_date"), item)) for item in files]}
 
     @app.get("/datasets/{dataset_id}/validation")
     def dataset_validation(dataset_id: str) -> dict:
@@ -91,7 +94,7 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="dataset not found")
         for mapping in payload.get("mappings", []):
             db.execute("INSERT OR REPLACE INTO dataset_mappings (dataset_id,source_file_type,source_column,canonical_field,confidence,confirmed) VALUES (?,?,?,?,?,?)", (dataset_id, mapping.get("source_file_type", "UNKNOWN"), mapping["source_column"], mapping["canonical_field"], float(mapping.get("confidence", 1.0)), int(bool(payload.get("confirmed")))))
-        return {"dataset_id": dataset_id, "mapping_status": "confirmed" if payload.get("confirmed") else "pending"}
+        return {"dataset_id": dataset_id, "mapping_status": _mapping_status(dataset_id) if payload.get("confirmed") else "pending"}
 
     @app.get("/datasets/{dataset_id}/mapping")
     def get_mapping(dataset_id: str) -> dict:

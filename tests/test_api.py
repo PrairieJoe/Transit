@@ -96,7 +96,7 @@ def test_api_returns_network_geojson_and_mapping(tmp_path):
     saved = mapping(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_column": "route_id", "canonical_field": "route_id"}]})
     result = geojson(registered["dataset_id"])
 
-    assert saved["mapping_status"] == "confirmed"
+    assert saved["mapping_status"] == "pending"
     assert result["type"] == "FeatureCollection"
     assert result["features"]
     assert {feature["geometry"]["type"] for feature in result["features"]} == {"LineString", "Point"}
@@ -163,6 +163,19 @@ def test_api_exposes_mapping_suggestions_for_regional_dataset(tmp_path):
 
     assert result["dataset_id"] == registered["dataset_id"]
     assert any(item["canonical_field"] == "route_id" for item in result["suggestions"])
+
+
+def test_dataset_detail_requires_complete_mapping_before_confirming(tmp_path):
+    database_path = tmp_path / "mapping-status.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    app = create_app(Database(database_path))
+    save = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "POST" in route.methods)
+    detail = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}")
+
+    save(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_file_type": "ROUTE", "source_column": "3", "canonical_field": "route_id"}]})
+
+    assert detail(registered["dataset_id"])["mapping_status"] == "pending"
 
 
 def test_api_blocks_scenario_run_until_mapping_is_confirmed(tmp_path):
