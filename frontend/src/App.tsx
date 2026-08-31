@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 
 type Dataset = { id: string; dataset_id?: string; name: string; source_type: string; quality_status: string; created_at: string; members?: unknown[] }
 type Route = { id: string; name: string; direction?: string; stops: string[]; coordinates: number[][] }
+type Metric = { scope_type: string; scope_id: string; metric_name: string; base_value: number; scenario_value: number; delta_value: number }
 
 const API = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
@@ -27,6 +28,7 @@ export default function App() {
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [message, setMessage] = useState('데이터셋을 선택하거나 압축파일을 업로드하세요.')
   const [uploading, setUploading] = useState(false)
+  const [metrics, setMetrics] = useState<Metric[]>([])
   const mapContainer = useRef<HTMLDivElement>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedStops, setEditedStops] = useState<string[]>([])
@@ -72,6 +74,8 @@ export default function App() {
       const scenario = await response.json()
       const run = await fetch(`${API}/scenarios/${scenario.id}/run`, { method: 'POST' })
       if (!run.ok) throw new Error(await run.text())
+      const detail = await get<Metric[]>(`/scenarios/${scenario.id}/metrics/detail`)
+      setMetrics(detail.filter(item => item.scope_type === 'ROUTE' || item.scope_type === 'NETWORK'))
       setMessage(`시나리오 ${scenario.id} 실행 완료. Base와 Scenario 결과를 확인하세요.`)
       setEditMode(false)
     } catch (error) { setMessage(error instanceof Error ? error.message : '시나리오 실행 실패') }
@@ -102,6 +106,7 @@ export default function App() {
         <aside className="panel routes"><div className="panel-title"><span>노선 목록</span><small>{routes.length}개</small></div>{routes.map(route => <button className={`route ${selectedRoute?.id === route.id ? 'active' : ''}`} key={route.id} onClick={() => setSelectedRoute(route)}><strong>{route.id}</strong><span>{route.name}</span><small>{route.stops.length}개 정류장</small></button>)}{routes.length === 0 && <p className="empty">검증된 일별 데이터를 선택하면 노선이 표시됩니다.</p>}</aside>
       </section>
       <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
+      {metrics.length > 0 && <section className="results"><div className="panel-title"><span>Base vs Scenario</span><small>최근 실행 결과</small></div><table><thead><tr><th>범위</th><th>지표</th><th>Base</th><th>Scenario</th><th>변화</th></tr></thead><tbody>{metrics.map(metric => <tr key={`${metric.scope_type}-${metric.scope_id}-${metric.metric_name}`}><td>{metric.scope_id}</td><td>{metric.metric_name}</td><td>{metric.base_value.toFixed(1)}</td><td>{metric.scenario_value.toFixed(1)}</td><td className={metric.delta_value < 0 ? 'negative' : 'positive'}>{metric.delta_value > 0 ? '+' : ''}{metric.delta_value.toFixed(1)}</td></tr>)}</tbody></table></section>}
       <div className="message">{message}</div>
     </main>
   </div>
