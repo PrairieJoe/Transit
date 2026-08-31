@@ -75,6 +75,8 @@ def test_run_network_scenario_reassigns_journeys_after_route_change(tmp_path):
 
     assert result["base_counts"]["R1"] == 1.0
     assert result["scenario_counts"]["R2"] > 0
+    details = database.query_all("SELECT scope_type, metric_name FROM metric_results WHERE scenario_id = ?", (result["scenario_id"],))
+    assert {row[0] for row in details} == {"NETWORK", "OD", "ROUTE", "STOP"}
 
 
 def test_run_scenario_records_failed_status_without_mutating_base(tmp_path):
@@ -93,3 +95,18 @@ def test_run_scenario_records_failed_status_without_mutating_base(tmp_path):
 
     assert database.query_one("SELECT status FROM scenarios WHERE name = 'invalid'")[0] == "failed"
     assert base_network == {"routes": {"R1": {"stops": ["S1", "S2"]}}}
+
+
+def test_run_network_scenario_records_failed_status(tmp_path):
+    database = Database(tmp_path / "db.sqlite3")
+    try:
+        run_network_scenario(
+            database, "invalid network", [{"transaction_id": "T1", "boarding_stop_id": "S1", "alighting_stop_id": "S2"}],
+            {"routes": {"R1": {"stops": ["S1", "S2"]}}},
+            [{"change_type": "ADD_STOP", "route_id": "missing", "stop_id": "S3"}],
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid network scenario should fail")
+    assert database.query_one("SELECT status FROM scenarios WHERE name = 'invalid network'")[0] == "failed"

@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from transit.demand import assign_journeys, assign_logit, build_journeys
+from transit.demand import assign_journeys, assign_logit, build_journeys, summarize_od_demand
 from transit.ingest import validate_bis_rows, validate_rows
-from transit.metrics import operating_metrics, required_vehicles
+from transit.metrics import network_kpis, operating_metrics, required_vehicles
 from transit.scenarios import apply_changes
 
 
@@ -114,3 +114,17 @@ def test_operating_metrics_calculates_trips_and_required_vehicles():
 
     assert result["R1"]["required_vehicles"] == 7
     assert result["R1"]["service_trips"] == 103
+
+
+def test_summarize_od_demand_excludes_unknown_destinations():
+    journeys = build_journeys([
+        {"transaction_id": "T1", "boarding_stop_id": "S1", "alighting_stop_id": "S2"},
+        {"transaction_id": "T2", "boarding_stop_id": "S1", "alighting_stop_id": ""},
+    ])
+    assert summarize_od_demand(journeys) == {"S1->S2": 1.0}
+
+
+def test_network_kpis_counts_routes_and_stop_coverage():
+    assert network_kpis({"R1": {"stops": ["S1", "S2"]}, "R2": {"stops": ["S2", "S3"]}}) == {
+        "route_count": 2, "stop_coverage": 3, "service_trips": 0, "required_vehicles": 0,
+    }

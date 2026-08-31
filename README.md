@@ -145,6 +145,10 @@ python -m pytest -q
 python -m transit.cli dataset register --file data/sample/cards.csv --type card
 python -m transit.cli dataset register --file data/sample/bis.csv --type bis
 python -m transit.cli demand summarize --dataset <card-dataset-id>
+python -m transit.cli demand summarize --dataset <card-dataset-id> --scope stop
+python -m transit.cli network build --dataset <bis-dataset-id> --output network.json
+python -m transit.cli scenario create --file data/sample/scenario.json
+python -m transit.cli scenario run --scenario <scenario-id>
 python -m transit.cli scenario run --file data/sample/scenario.json
 python -m transit.cli scenario compare --scenario <scenario-id> --format csv --output metrics.csv
 python -m transit.cli scenario compare --scenario <scenario-id> --format geojson --network network.json --output routes.geojson
@@ -158,6 +162,8 @@ python -m transit.cli scenario compare --scenario <scenario-id> --format geojson
 
 - CSV 교통카드·BIS 파일 등록 및 SQLite 저장
 - 필수 필드와 좌표 범위 품질검사
+- 노선별 정류장 순서·복합 중복 품질검사
+- 기준 BIS 네트워크 JSON 생성 및 저장형 시나리오 실행
 - 관측·추정 불가 하차 상태 분리
 - 불변 버스 시나리오 변환
 - 기본 Logit 경로선택 계산
@@ -180,7 +186,9 @@ app = create_app(Database("data/transit.sqlite3"))
 
 - `GET /health`
 - `GET /datasets/{dataset_id}/demand`
+  - `?scope=route` (기본값) 또는 `?scope=stop`
 - `GET /scenarios/{scenario_id}/metrics`
+- `GET /scenarios/{scenario_id}/metrics/detail` (노선·정류장·OD·네트워크 범위)
 
 ## 라이선스
 

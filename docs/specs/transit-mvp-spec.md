@@ -277,9 +277,11 @@ transit dataset validate --dataset <id>
 transit network build --dataset <id>
 transit demand summarize --dataset <id>
 transit scenario create --base <network_version> --file <scenario.json>
-transit scenario run --scenario <id>
+transit scenario run --scenario <id> 또는 --file <scenario.json>
 transit scenario compare --scenario <id> --format csv|geojson
 ```
+
+`network build`는 BIS dataset을 기준으로 정류장 좌표가 포함된 기준 네트워크 JSON을 생성한다. `scenario create --base <network_version> --file <scenario.json>`는 재현 가능한 draft를 저장하고, 이후 `scenario run --scenario <id>`가 같은 scenario 레코드를 실행 상태에서 완료 상태로 갱신한다. 상세 KPI는 조회 API의 `/scenarios/{id}/metrics/detail`에서 scope type과 metric name을 포함해 반환한다.
 
 실패 응답에는 `error_code`, `message`, `details`, 관련 `dataset_id` 또는 `scenario_id`를 포함한다. 동일 입력·파라미터 실행은 입력 해시 또는 idempotency key로 중복을 감지한다.
 
@@ -335,4 +337,3 @@ transit scenario compare --scenario <id> --format csv|geojson
 원천 파일은 수정하지 않는다. dataset·network·scenario·model parameter에 버전을 부여하고 잘못된 파생 결과는 비활성화한 뒤 이전 버전을 선택한다. SQLite 스키마는 migration으로 관리하고, 문제 발생 시 마지막 정상 SQLite snapshot과 애플리케이션 커밋으로 복구한다.
 
 후속 OTP·OSRM·PostGIS 도입은 `NetworkRouter`와 `SpatialStore` adapter로 분리한다. 철도망 결합, 자동 Calibration, 웹 UI, 인증, 실시간 연동은 별도 spec으로 작성한다.
-

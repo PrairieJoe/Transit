@@ -1,12 +1,14 @@
 """Command-line interface for the Transit MVP."""
 import argparse
 import json
+import uuid
 from pathlib import Path
 
 from .db import Database
 from .ingest import register_file
 from .pipeline import run_network_scenario, run_scenario, summarize_card_demand, summarize_stop_demand
 from .metrics import export_geojson
+from .network import build_network
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="transit", description="Transit demand and bus scenario analysis")
@@ -24,10 +26,20 @@ def build_parser() -> argparse.ArgumentParser:
     summarize = demand_commands.add_parser("summarize")
     summarize.add_argument("--dataset", required=True)
     summarize.add_argument("--scope", choices=("route", "stop"), default="route")
+    network = commands.add_parser("network")
+    network_commands = network.add_subparsers(dest="network_command", required=True)
+    network_build = network_commands.add_parser("build")
+    network_build.add_argument("--dataset", required=True)
+    network_build.add_argument("--output", required=True)
     scenario = commands.add_parser("scenario")
     scenario_commands = scenario.add_subparsers(dest="scenario_command", required=True)
+    create = scenario_commands.add_parser("create")
+    create.add_argument("--file", required=True)
+    create.add_argument("--base")
     run = scenario_commands.add_parser("run")
-    run.add_argument("--file", required=True)
+    run_source = run.add_mutually_exclusive_group(required=True)
+    run_source.add_argument("--file")
+    run_source.add_argument("--scenario")
     compare = scenario_commands.add_parser("compare")
     compare.add_argument("--scenario", required=True)
     compare.add_argument("--format", choices=("json", "csv", "geojson"), default="json")
@@ -53,17 +65,41 @@ def main(argv: list[str] | None = None) -> int:
             summary = summarize_stop_demand(database, args.dataset) if args.scope == "stop" else summarize_card_demand(database, args.dataset)
             print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
             return 0
-        if args.command == "scenario" and args.scenario_command == "run":
+        if args.command == "network" and args.network_command == "build":
+            network = build_network(database, args.dataset)
+            Path(args.output).write_text(json.dumps(network, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"output={args.output}")
+            return 0
+        if args.command == "scenario" and args.scenario_command == "create":
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+            if args.base:
+                payload["base_network_version"] = args.base
+            scenario_id = f"scenario-{uuid.uuid4().hex[:12]}"
+            database.execute(
+                "INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,datetime('now'))",
+                (scenario_id, payload["name"], payload.get("base_network_version", "base-v1"), "draft"),
+            )
+            database.execute("INSERT INTO scenario_inputs (scenario_id,payload_json) VALUES (?,?)", (scenario_id, json.dumps(payload, ensure_ascii=False)))
+            print(f"scenario_id={scenario_id}")
+            return 0
+        if args.command == "scenario" and args.scenario_command == "run":
+            if args.file:
+                payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+            else:
+                row = database.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (args.scenario,))
+                if row is None:
+                    print(f"error_code=scenario.not_found scenario_id={args.scenario}")
+                    return 1
+                payload = json.loads(row[0])
             if "journeys" in payload:
                 result = run_network_scenario(
                     database, payload["name"], payload["journeys"],
-                    payload["base_network"], payload.get("changes", []), payload.get("beta", 0.08),
+                    payload["base_network"], payload.get("changes", []), payload.get("beta", 0.08), args.scenario,
                 )
             else:
                 result = run_scenario(
                     database, payload["name"], payload["base_counts"], payload["scenario_counts"],
-                    payload.get("base_network"), payload.get("changes"),
+                    payload.get("base_network"), payload.get("changes"), scenario_id=args.scenario,
                 )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0

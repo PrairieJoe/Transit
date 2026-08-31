@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .db import Database
-from .demand import Journey, assign_journeys
-from .metrics import compare_counts
+from .demand import Journey, assign_journeys, summarize_od_demand
+from .metrics import compare_counts, network_kpis
 from .scenarios import apply_changes
 
 def summarize_card_demand(database: Database, dataset_id: str) -> dict[str, int]:
@@ -43,13 +43,18 @@ def run_scenario(
     scenario_counts: dict[str, int | float],
     base_network: dict[str, Any] | None = None,
     changes: list[dict[str, Any]] | None = None,
+    scenario_id: str | None = None,
 ) -> dict:
-    scenario_id = f"scenario-{uuid.uuid4().hex[:12]}"
+    scenario_id = scenario_id or f"scenario-{uuid.uuid4().hex[:12]}"
     changes = changes or []
-    database.execute(
-        "INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,?)",
-        (scenario_id, name, "base-v1", "running", datetime.now(timezone.utc).isoformat()),
-    )
+    existing = database.query_one("SELECT id FROM scenarios WHERE id = ?", (scenario_id,))
+    if existing:
+        database.execute("UPDATE scenarios SET status = 'running' WHERE id = ?", (scenario_id,))
+    else:
+        database.execute(
+            "INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,?)",
+            (scenario_id, name, "base-v1", "running", datetime.now(timezone.utc).isoformat()),
+        )
     try:
         scenario_network = apply_changes(base_network or {"routes": {}}, changes)
     except (KeyError, TypeError, ValueError):
@@ -79,6 +84,7 @@ def run_network_scenario(
     base_network: dict[str, Any],
     changes: list[dict[str, Any]],
     beta: float = 0.08,
+    scenario_id: str | None = None,
 ) -> dict:
     normalized = [item if isinstance(item, Journey) else Journey(
         id=str(item.get("id") or item.get("transaction_id")),
@@ -86,8 +92,50 @@ def run_network_scenario(
         destination_stop_id=item.get("alighting_stop_id") or None,
         destination_status="OBSERVED" if item.get("alighting_stop_id") else "UNKNOWN",
     ) for item in journeys]
-    scenario_network = apply_changes(base_network, changes)
+    try:
+        scenario_network = apply_changes(base_network, changes)
+    except (KeyError, TypeError, ValueError):
+        failed_id = scenario_id or f"scenario-{uuid.uuid4().hex[:12]}"
+        if database.query_one("SELECT id FROM scenarios WHERE id = ?", (failed_id,)):
+            database.execute("UPDATE scenarios SET status = 'failed' WHERE id = ?", (failed_id,))
+        else:
+            database.execute(
+                "INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,?)",
+                (failed_id, name, "base-v1", "failed", datetime.now(timezone.utc).isoformat()),
+            )
+        raise
     base_counts = assign_journeys(normalized, base_network, beta=beta)
     scenario_counts = assign_journeys(normalized, scenario_network, beta=beta)
-    result = run_scenario(database, name, base_counts, scenario_counts, base_network, changes)
+    result = run_scenario(database, name, base_counts, scenario_counts, base_network, changes, scenario_id=scenario_id)
+    base_od = summarize_od_demand(normalized)
+    scenario_od = base_od.copy()
+    base_stops = _journey_stop_metrics(normalized)
+    scenario_stops = base_stops.copy()
+    base_network_kpis = network_kpis(base_network.get("routes", {}))
+    scenario_network_kpis = network_kpis(scenario_network.get("routes", {}))
+    _persist_scope_metrics(database, result["scenario_id"], "OD", "journeys", base_od, scenario_od)
+    _persist_scope_metrics(database, result["scenario_id"], "STOP", "boardings", base_stops["boardings"], scenario_stops["boardings"])
+    _persist_scope_metrics(database, result["scenario_id"], "STOP", "alightings", base_stops["alightings"], scenario_stops["alightings"])
+    _persist_scope_metrics(database, result["scenario_id"], "NETWORK", "kpi", base_network_kpis, scenario_network_kpis)
     return {**result, "base_counts": base_counts, "scenario_counts": scenario_counts}
+
+
+def _journey_stop_metrics(journeys: list[Journey]) -> dict[str, dict[str, float]]:
+    boardings: dict[str, float] = {}
+    alightings: dict[str, float] = {}
+    for journey in journeys:
+        boardings[journey.origin_stop_id] = boardings.get(journey.origin_stop_id, 0.0) + 1.0
+        if journey.destination_stop_id and journey.destination_status in {"OBSERVED", "INFERRED"}:
+            alightings[journey.destination_stop_id] = alightings.get(journey.destination_stop_id, 0.0) + 1.0
+    return {"boardings": boardings, "alightings": alightings}
+
+
+def _persist_scope_metrics(database: Database, scenario_id: str, scope_type: str, metric_name: str,
+                           base: dict[str, int | float], scenario: dict[str, int | float]) -> None:
+    for scope_id, values in compare_counts(base, scenario).items():
+        database.execute(
+            "INSERT INTO metric_results (id,scenario_id,scope_type,scope_id,metric_name,base_value,scenario_value,delta_value,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (uuid.uuid4().hex, scenario_id, scope_type, scope_id, metric_name,
+             values["base_value"], values["scenario_value"], values["delta_value"],
+             datetime.now(timezone.utc).isoformat()),
+        )

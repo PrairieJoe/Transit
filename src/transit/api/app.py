@@ -46,7 +46,7 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="database is not configured")
         rows = db.query_all(
             "SELECT scope_id, base_value, scenario_value, delta_value "
-            "FROM metric_results WHERE scenario_id = ? ORDER BY scope_id",
+            "FROM metric_results WHERE scenario_id = ? AND scope_type = 'ROUTE' AND metric_name = 'boardings' ORDER BY scope_id",
             (scenario_id,),
         )
         if not rows:
@@ -55,5 +55,22 @@ def create_app(database: Database | None = None) -> FastAPI:
             scope_id: {"base_value": base, "scenario_value": scenario, "delta_value": delta}
             for scope_id, base, scenario, delta in rows
         }
+
+    @app.get("/scenarios/{scenario_id}/metrics/detail")
+    def scenario_metric_details(scenario_id: str) -> list[dict]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        rows = db.query_all(
+            "SELECT scope_type, scope_id, metric_name, base_value, scenario_value, delta_value "
+            "FROM metric_results WHERE scenario_id = ? ORDER BY scope_type, scope_id, metric_name",
+            (scenario_id,),
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="scenario metrics not found")
+        return [
+            {"scope_type": scope_type, "scope_id": scope_id, "metric_name": metric_name,
+             "base_value": base, "scenario_value": scenario, "delta_value": delta}
+            for scope_type, scope_id, metric_name, base, scenario, delta in rows
+        ]
 
     return app

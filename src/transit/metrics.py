@@ -30,6 +30,17 @@ def operating_metrics(routes: dict[str, dict]) -> dict[str, dict[str, int | floa
         }
     return result
 
+
+def network_kpis(routes: dict[str, dict]) -> dict[str, int | float]:
+    """Return deterministic network-level coverage and operating KPIs."""
+    operating = operating_metrics(routes)
+    return {
+        "route_count": len(routes),
+        "stop_coverage": len({stop for route in routes.values() for stop in route.get("stops", [])}),
+        "service_trips": sum(item["service_trips"] for item in operating.values()),
+        "required_vehicles": sum(item["required_vehicles"] for item in operating.values()),
+    }
+
 def compare_counts(base: dict[str, int | float], scenario: dict[str, int | float]) -> dict[str, dict[str, int | float]]:
     return {key: {"base_value": base.get(key, 0), "scenario_value": scenario.get(key, 0), "delta_value": scenario.get(key, 0) - base.get(key, 0)} for key in sorted(set(base) | set(scenario))}
 

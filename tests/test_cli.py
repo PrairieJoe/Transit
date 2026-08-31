@@ -107,3 +107,34 @@ def test_cli_scenario_run_can_calculate_counts_from_journeys(tmp_path, capsys):
 
     assert main(["--db", str(tmp_path / "db.sqlite3"), "scenario", "run", "--file", str(scenario_file)]) == 0
     assert '"base_counts": {"R1": 1.0}' in capsys.readouterr().out
+
+
+def test_cli_network_build_exports_bis_network(tmp_path, capsys):
+    source = tmp_path / "bis.csv"
+    source.write_text(
+        "route_id,route_name,stop_id,stop_name,stop_sequence,latitude,longitude\n"
+        "R1,Route 1,S1,Stop 1,1,37.1,127.1\n"
+        "R1,Route 1,S2,Stop 2,2,37.2,127.2\n", encoding="utf-8"
+    )
+    db_path = tmp_path / "db.sqlite3"
+    dataset_id = register_file(Database(db_path), source, "BIS")
+    output = tmp_path / "network.json"
+
+    assert main(["--db", str(db_path), "network", "build", "--dataset", dataset_id, "--output", str(output)]) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["routes"]["R1"]["coordinates"] == [[127.1, 37.1], [127.2, 37.2]]
+    assert f"output={output}" in capsys.readouterr().out
+
+
+def test_cli_scenario_create_then_run_by_id(tmp_path, capsys):
+    payload = {"name": "stored", "base_counts": {"R1": 2}, "scenario_counts": {"R1": 3}}
+    scenario_file = tmp_path / "scenario.json"
+    scenario_file.write_text(json.dumps(payload), encoding="utf-8")
+    db_path = tmp_path / "db.sqlite3"
+
+    assert main(["--db", str(db_path), "scenario", "create", "--base", "network-v2", "--file", str(scenario_file)]) == 0
+    scenario_id = capsys.readouterr().out.strip().split("=", 1)[1]
+    assert Database(db_path).query_one("SELECT base_network_version FROM scenarios WHERE id = ?", (scenario_id,))[0] == "network-v2"
+    assert main(["--db", str(db_path), "scenario", "run", "--scenario", scenario_id]) == 0
+    output = capsys.readouterr().out
+    assert f'"scenario_id": "{scenario_id}"' in output
+    assert '"delta_value": 1' in output

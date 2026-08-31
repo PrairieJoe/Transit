@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS scenario_changes (
   id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, change_type TEXT NOT NULL,
   payload_json TEXT NOT NULL, FOREIGN KEY (scenario_id) REFERENCES scenarios(id)
 );
+CREATE TABLE IF NOT EXISTS scenario_inputs (
+  scenario_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL,
+  FOREIGN KEY (scenario_id) REFERENCES scenarios(id)
+);
 CREATE TABLE IF NOT EXISTS metric_results (
   id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, scope_type TEXT NOT NULL,
   scope_id TEXT NOT NULL, metric_name TEXT NOT NULL, base_value REAL,
@@ -73,4 +77,3 @@ class Database:
 
     def close(self) -> None:
         self.connection.close()
-

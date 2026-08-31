@@ -25,6 +25,17 @@ def build_journeys(rows: Iterable[dict[str, Any]]) -> list[Journey]:
     return journeys
 
 
+def summarize_od_demand(journeys: Iterable[Journey]) -> dict[str, float]:
+    """Count observed or otherwise known origin-destination journeys."""
+    result: dict[str, float] = {}
+    for journey in journeys:
+        if not journey.destination_stop_id or journey.destination_status not in {"OBSERVED", "INFERRED"}:
+            continue
+        key = f"{journey.origin_stop_id}->{journey.destination_stop_id}"
+        result[key] = result.get(key, 0.0) + 1.0
+    return dict(sorted(result.items()))
+
+
 def assign_logit(costs: dict[str, float], beta: float = 0.08) -> dict[str, float]:
     if not costs:
         return {}

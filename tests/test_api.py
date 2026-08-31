@@ -24,3 +24,12 @@ def test_api_exposes_stop_demand_scope(tmp_path):
     app = create_app(database)
     endpoint = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/demand")
     assert endpoint(dataset_id, "stop") == {"S1": {"boardings": 2, "alightings": 0}, "S2": {"boardings": 0, "alightings": 1}}
+
+
+def test_api_exposes_detailed_scenario_metrics(tmp_path):
+    database = Database(tmp_path / "api.sqlite3")
+    result = run_scenario(database, "api", {"R1": 10}, {"R1": 13})
+    app = create_app(database)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/metrics/detail")
+    details = endpoint(result["scenario_id"])
+    assert details[0]["scope_type"] == "ROUTE"
