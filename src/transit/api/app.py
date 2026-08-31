@@ -89,6 +89,25 @@ def create_app(database: Database | None = None) -> FastAPI:
             db.execute("INSERT OR REPLACE INTO dataset_mappings (dataset_id,source_file_type,source_column,canonical_field,confidence,confirmed) VALUES (?,?,?,?,?,?)", (dataset_id, mapping.get("source_file_type", "UNKNOWN"), mapping["source_column"], mapping["canonical_field"], float(mapping.get("confidence", 1.0)), int(bool(payload.get("confirmed")))))
         return {"dataset_id": dataset_id, "mapping_status": "confirmed" if payload.get("confirmed") else "pending"}
 
+    @app.get("/datasets/{dataset_id}/mapping")
+    def get_mapping(dataset_id: str) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        if not db.query_one("SELECT id FROM datasets WHERE id = ?", (dataset_id,)):
+            raise HTTPException(status_code=404, detail="dataset not found")
+        saved = db.query_all("SELECT source_file_type,source_column,canonical_field,confidence,confirmed FROM dataset_mappings WHERE dataset_id = ? ORDER BY source_file_type,source_column", (dataset_id,))
+        suggestions = [
+            {"source_file_type": "ROUTE", "source_column": "3", "canonical_field": "route_id", "confidence": 0.95},
+            {"source_file_type": "ROUTE", "source_column": "4", "canonical_field": "route_name", "confidence": 0.95},
+            {"source_file_type": "ROUTESTTN", "source_column": "7", "canonical_field": "stop_id", "confidence": 0.98},
+            {"source_file_type": "ROUTESTTN", "source_column": "9", "canonical_field": "latitude", "confidence": 0.99},
+            {"source_file_type": "ROUTESTTN", "source_column": "10", "canonical_field": "longitude", "confidence": 0.99},
+            {"source_file_type": "DWTCD", "source_column": "9", "canonical_field": "transaction_time", "confidence": 0.9},
+            {"source_file_type": "DWTCD", "source_column": "11", "canonical_field": "route_id", "confidence": 0.8},
+            {"source_file_type": "DWTCD", "source_column": "13", "canonical_field": "boarding_stop_id", "confidence": 0.8},
+        ]
+        return {"dataset_id": dataset_id, "saved": [dict(zip(("source_file_type", "source_column", "canonical_field", "confidence", "confirmed"), row)) for row in saved], "suggestions": suggestions}
+
     @app.get("/networks/{network_version}/routes")
     def network_routes(network_version: str) -> list[dict]:
         if db is None:

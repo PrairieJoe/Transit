@@ -73,7 +73,7 @@ def test_api_returns_network_geojson_and_mapping(tmp_path):
     registered = register_regional_archive(database_path, archive, "DAILY")
     database = Database(database_path)
     app = create_app(database)
-    mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping")
+    mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "POST" in route.methods)
     geojson = next(route.endpoint for route in app.routes if route.path == "/networks/{network_version}/geojson")
 
     saved = mapping(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_column": "route_id", "canonical_field": "route_id"}]})
@@ -121,3 +121,16 @@ def test_api_http_request_can_use_database_from_fastapi_threadpool(tmp_path):
 
     assert response.status_code == 200
     assert response.json()[0]["id"] == "ds1"
+
+
+def test_api_exposes_mapping_suggestions_for_regional_dataset(tmp_path):
+    database_path = tmp_path / "mapping.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    app = create_app(Database(database_path))
+    mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "GET" in route.methods)
+
+    result = mapping(registered["dataset_id"])
+
+    assert result["dataset_id"] == registered["dataset_id"]
+    assert any(item["canonical_field"] == "route_id" for item in result["suggestions"])
