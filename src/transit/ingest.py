@@ -20,6 +20,25 @@ class ValidationReport:
     valid: bool
     errors: list[ValidationError] = field(default_factory=list)
 
+
+FIELD_ALIASES = {
+    "CARD": {
+        "id": "transaction_id", "timestamp": "transaction_time", "boarding_stop": "boarding_stop_id",
+        "board_stop_id": "boarding_stop_id", "alighting_stop": "alighting_stop_id", "alight_stop_id": "alighting_stop_id",
+    },
+    "BIS": {
+        "route": "route_id", "route_no": "route_id", "route_title": "route_name", "stop": "stop_id",
+        "stop_no": "stop_id", "stop_title": "stop_name", "sequence": "stop_sequence",
+        "lat": "latitude", "lng": "longitude", "lon": "longitude", "start_time": "service_start_time", "end_time": "service_end_time",
+    },
+}
+
+
+def normalize_rows(rows: list[dict[str, Any]], source_type: str) -> list[dict[str, Any]]:
+    """Map common source column aliases to the canonical input contract."""
+    aliases = FIELD_ALIASES[source_type]
+    return [{canonical: row.get(alias) if canonical not in row else row[canonical] for alias, canonical in aliases.items()} | row for row in rows]
+
 def validate_rows(
     rows: Iterable[dict[str, Any]],
     required_fields: set[str],
@@ -130,7 +149,7 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
     source_type = source_type.upper()
     if source_type not in {"CARD", "BIS"}:
         raise ValueError("source_type must be CARD or BIS")
-    rows = _read_rows(source_path)
+    rows = normalize_rows(_read_rows(source_path), source_type)
     required = {"transaction_id", "transaction_time", "boarding_stop_id"} if source_type == "CARD" else {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude"}
     report = validate_rows(rows, required, unique_fields={"transaction_id"}) if source_type == "CARD" else validate_bis_rows(rows)
     time_report = validate_time_fields(rows, {"transaction_time"} if source_type == "CARD" else {"service_start_time", "service_end_time"})

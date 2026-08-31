@@ -161,6 +161,7 @@ python -m transit.cli scenario compare --scenario <scenario-id> --format geojson
 현재 구현된 MVP 기반 기능은 다음과 같습니다.
 
 - CSV 교통카드·BIS 파일 등록 및 SQLite 저장
+- 대표 원천 컬럼 별칭 자동 정규화(`timestamp`, `route_no`, `stop_no`, `lat`, `lng` 등)
 - 필수 필드와 좌표 범위 품질검사
 - 노선별 정류장 순서·복합 중복 품질검사
 - dataset 품질 오류의 SQLite 구조화 저장 및 JSON 검증 결과

@@ -217,6 +217,8 @@ BIS의 논리 필드는 `route_id`, `route_name`, `direction`, `stop_id`, `stop_
 
 처리 순서는 인코딩·구분자·타입 감지, 표준 필드 후보 매핑, 사용자 확인, 필수값 검사, 좌표 검사, 중복 검사, SHA-256 중복 파일 검사, 품질 리포트 생성으로 고정한다. 필수 필드 누락, 좌표 범위 초과, 중복 식별자, 음수·중복 순서, 파싱 불가 시간값은 구조화된 실패 사유로 반환한다.
 
+현재 구현은 `id/timestamp/boarding_stop`, `route_no/route_title/stop_no/stop_title/sequence/lat/lng` 등 대표 별칭을 자동으로 canonical 필드로 정규화한다.
+
 ## 8. 수요 처리 및 시나리오
 
 - 실제 하차값은 `OBSERVED`로 저장한다.
