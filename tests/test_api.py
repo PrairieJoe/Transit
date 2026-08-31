@@ -99,6 +99,7 @@ def test_api_returns_network_geojson_and_mapping(tmp_path):
     assert saved["mapping_status"] == "confirmed"
     assert result["type"] == "FeatureCollection"
     assert result["features"]
+    assert {feature["geometry"]["type"] for feature in result["features"]} == {"LineString", "Point"}
 
 
 def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):

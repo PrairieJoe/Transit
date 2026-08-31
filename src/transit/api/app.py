@@ -128,7 +128,16 @@ def create_app(database: Database | None = None) -> FastAPI:
             network = build_network(db, network_version)
         except ValueError:
             raise HTTPException(status_code=404, detail="network not found")
-        return {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": route["coordinates"]}, "properties": {"route_id": route_id, "name": route["name"], "direction": route.get("direction"), "stops": route["stops"]}} for route_id, route in network["routes"].items()]}
+        features = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": route["coordinates"]}, "properties": {"feature_type": "route", "route_id": route_id, "name": route["name"], "direction": route.get("direction"), "stops": route["stops"]}} for route_id, route in network["routes"].items()]
+        stop_rows = db.query_all(
+            "SELECT DISTINCT s.source_stop_id, s.name, s.latitude, s.longitude "
+            "FROM stops s JOIN route_stops rs ON rs.stop_id = s.id "
+            "JOIN routes r ON r.id = rs.route_id WHERE r.source_dataset_id = ? "
+            "ORDER BY s.source_stop_id",
+            (network_version,),
+        )
+        features.extend({"type": "Feature", "geometry": {"type": "Point", "coordinates": [longitude, latitude]}, "properties": {"feature_type": "stop", "stop_id": stop_id, "name": name}} for stop_id, name, latitude, longitude in stop_rows)
+        return {"type": "FeatureCollection", "features": features}
 
     @app.get("/routes/{route_id}")
     def route_detail(route_id: str) -> dict:

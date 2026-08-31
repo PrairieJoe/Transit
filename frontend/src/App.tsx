@@ -65,9 +65,10 @@ export default function App() {
         zoom: 8,
         attributionControl: false,
       })
-      map.on('load', () => {
-        map?.addSource('routes', { type: 'geojson', data: geojson as never })
-        map?.addLayer({ id: 'routes', type: 'line', source: 'routes', paint: { 'line-color': '#477b58', 'line-width': 3, 'line-opacity': .85 } })
+        map.on('load', () => {
+          map?.addSource('routes', { type: 'geojson', data: geojson as never })
+          map?.addLayer({ id: 'routes', type: 'line', source: 'routes', paint: { 'line-color': '#477b58', 'line-width': 3, 'line-opacity': .85 } })
+          map?.addLayer({ id: 'stops', type: 'circle', source: 'routes', filter: ['==', ['get', 'feature_type'], 'stop'], paint: { 'circle-color': '#f2b84b', 'circle-radius': 4, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 } })
         const coordinates = geojson.features.flatMap(feature => (feature as { geometry?: { coordinates?: number[][] } }).geometry?.coordinates ?? [])
         if (coordinates.length > 1) {
           const bounds = coordinates.reduce((current, coordinate) => current.extend(coordinate as [number, number]), new maplibregl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number]))
