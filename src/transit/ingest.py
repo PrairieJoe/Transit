@@ -43,14 +43,23 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8-sig") as stream:
         return list(csv.DictReader(stream))
 
+def _read_rows(path: Path) -> list[dict[str, Any]]:
+    if path.suffix.lower() == ".csv":
+        return _read_csv(path)
+    if path.suffix.lower() == ".parquet":
+        try:
+            import pyarrow.parquet as parquet
+        except ImportError as error:
+            raise ValueError("Parquet input requires the optional pyarrow package") from error
+        return parquet.read_table(path).to_pylist()
+    raise ValueError("input must be a CSV or Parquet file")
+
 def register_file(database: Database, path: str | Path, source_type: str) -> str:
     source_path = Path(path)
-    if source_path.suffix.lower() != ".csv":
-        raise ValueError("MVP currently accepts CSV input; Parquet adapter is planned")
     source_type = source_type.upper()
     if source_type not in {"CARD", "BIS"}:
         raise ValueError("source_type must be CARD or BIS")
-    rows = _read_csv(source_path)
+    rows = _read_rows(source_path)
     required = {"transaction_id", "transaction_time", "boarding_stop_id"} if source_type == "CARD" else {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude"}
     report = validate_rows(rows, required)
     file_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
@@ -87,4 +96,3 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
                 (route_key, stop_key, int(row["stop_sequence"]), None, None, "BIS"),
             )
     return dataset_id
-

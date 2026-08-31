@@ -2,6 +2,9 @@ import csv
 import json
 import sqlite3
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 from transit.db import Database
 from transit.ingest import register_file
 from transit.metrics import compare_counts, export_geojson, export_metrics_csv
@@ -28,6 +31,21 @@ def test_register_card_csv_persists_dataset_and_transactions(tmp_path):
     assert database.query_one("SELECT COUNT(*) FROM datasets")[0] == 1
     assert database.query_one("SELECT COUNT(*) FROM card_transactions")[0] == 1
     assert dataset_id
+
+
+def test_register_card_parquet_persists_transactions(tmp_path):
+    path = tmp_path / "cards.parquet"
+    pq.write_table(pa.table({
+        "transaction_id": ["T1"],
+        "transaction_time": ["2026-08-31T08:00:00"],
+        "boarding_stop_id": ["S1"],
+        "alighting_stop_id": ["S2"],
+    }), path)
+
+    database = Database(tmp_path / "transit.sqlite3")
+    register_file(database, path, source_type="CARD")
+
+    assert database.query_one("SELECT COUNT(*) FROM card_transactions")[0] == 1
 
 
 def test_compare_counts_returns_base_scenario_and_delta():
