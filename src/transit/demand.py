@@ -16,11 +16,14 @@ def build_journeys(rows: Iterable[dict[str, Any]]) -> list[Journey]:
     journeys: list[Journey] = []
     for index, row in enumerate(rows, start=1):
         destination = row.get("alighting_stop_id") or None
+        status = row.get("destination_status") or row.get("alighting_status")
+        if status not in {"OBSERVED", "INFERRED", "UNKNOWN"}:
+            status = "OBSERVED" if destination else "UNKNOWN"
         journeys.append(Journey(
             id=str(row.get("transaction_id") or f"J{index}"),
             origin_stop_id=str(row.get("boarding_stop_id") or ""),
             destination_stop_id=destination,
-            destination_status="OBSERVED" if destination else "UNKNOWN",
+            destination_status=status,
         ))
     return journeys
 

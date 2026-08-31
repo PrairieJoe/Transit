@@ -1,6 +1,7 @@
 """Input reading and validation primitives."""
 import csv
 import hashlib
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,6 +93,23 @@ def validate_bis_rows(rows: list[dict[str, Any]]) -> ValidationReport:
         seen.add(sequence)
     return ValidationReport(valid=not errors, errors=errors)
 
+
+def validate_time_fields(rows: list[dict[str, Any]], fields: set[str]) -> ValidationReport:
+    errors: list[ValidationError] = []
+    for row_number, row in enumerate(rows, start=1):
+        for field in fields:
+            value = row.get(field)
+            if value in (None, ""):
+                continue
+            try:
+                if field.endswith("_time"):
+                    datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                else:
+                    datetime.strptime(str(value), "%H:%M")
+            except ValueError:
+                errors.append(ValidationError(f"{field}.invalid", field, f"row {row_number}: invalid time value"))
+    return ValidationReport(valid=not errors, errors=errors)
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8-sig") as stream:
         return list(csv.DictReader(stream))
@@ -114,7 +132,9 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
         raise ValueError("source_type must be CARD or BIS")
     rows = _read_rows(source_path)
     required = {"transaction_id", "transaction_time", "boarding_stop_id"} if source_type == "CARD" else {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude"}
-    report = validate_rows(rows, required) if source_type == "CARD" else validate_bis_rows(rows)
+    report = validate_rows(rows, required, unique_fields={"transaction_id"}) if source_type == "CARD" else validate_bis_rows(rows)
+    time_report = validate_time_fields(rows, {"transaction_time"} if source_type == "CARD" else {"service_start_time", "service_end_time"})
+    report = ValidationReport(valid=report.valid and time_report.valid, errors=[*report.errors, *time_report.errors])
     file_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
     existing = database.query_one("SELECT id FROM datasets WHERE file_hash = ?", (file_hash,))
     if existing:
@@ -124,6 +144,11 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
         "INSERT INTO datasets (id,name,source_type,file_path,file_hash,schema_version,quality_status,created_at) VALUES (?,?,?,?,?,?,?,?)",
         (dataset_id, source_path.name, source_type, str(source_path), file_hash, "1.0", "passed" if report.valid else "failed", datetime.now(timezone.utc).isoformat()),
     )
+    for error in report.errors:
+        database.execute(
+            "INSERT INTO validation_errors (id,dataset_id,error_code,field,message) VALUES (?,?,?,?,?)",
+            (uuid.uuid4().hex, dataset_id, error.code, error.field, error.message),
+        )
     if not report.valid:
         return dataset_id
     if source_type == "CARD":

@@ -48,6 +48,20 @@ def test_register_card_parquet_persists_transactions(tmp_path):
     assert database.query_one("SELECT COUNT(*) FROM card_transactions")[0] == 1
 
 
+def test_register_invalid_card_persists_structured_validation_errors(tmp_path):
+    source = tmp_path / "invalid.csv"
+    source.write_text(
+        "transaction_id,transaction_time,boarding_stop_id\n"
+        "T1,not-a-time,S1\n"
+        "T1,2026-08-31T08:01:00,S2\n", encoding="utf-8"
+    )
+    database = Database(tmp_path / "db.sqlite3")
+    dataset_id = register_file(database, source, "CARD")
+    assert database.query_one("SELECT quality_status FROM datasets WHERE id = ?", (dataset_id,))[0] == "failed"
+    codes = {row[0] for row in database.query_all("SELECT error_code FROM validation_errors WHERE dataset_id = ?", (dataset_id,))}
+    assert {"transaction_id.duplicate", "transaction_time.invalid"} <= codes
+
+
 def test_compare_counts_returns_base_scenario_and_delta():
     result = compare_counts({"R1": 10}, {"R1": 13, "R2": 2})
 

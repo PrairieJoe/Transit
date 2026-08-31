@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS datasets (
   file_path TEXT NOT NULL, file_hash TEXT NOT NULL UNIQUE, schema_version TEXT NOT NULL,
   quality_status TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS validation_errors (
+  id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL, error_code TEXT NOT NULL,
+  field TEXT NOT NULL, message TEXT NOT NULL,
+  FOREIGN KEY (dataset_id) REFERENCES datasets(id)
+);
 CREATE TABLE IF NOT EXISTS stops (
   id TEXT PRIMARY KEY, source_dataset_id TEXT NOT NULL, source_stop_id TEXT NOT NULL,
   name TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL,

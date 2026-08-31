@@ -59,7 +59,13 @@ def main(argv: list[str] | None = None) -> int:
             if row is None:
                 print(f"error_code=dataset.not_found dataset_id={args.dataset}")
                 return 1
-            print(f"dataset_id={row[0]} quality_status={row[1]}")
+            errors = database.query_all(
+                "SELECT error_code, field, message FROM validation_errors WHERE dataset_id = ? ORDER BY id",
+                (args.dataset,),
+            )
+            print(json.dumps({"dataset_id": row[0], "quality_status": row[1], "errors": [
+                {"error_code": code, "field": field, "message": message} for code, field, message in errors
+            ]}, ensure_ascii=False, sort_keys=True))
             return 0 if row[1] == "passed" else 1
         if args.command == "demand" and args.demand_command == "summarize":
             summary = summarize_stop_demand(database, args.dataset) if args.scope == "stop" else summarize_card_demand(database, args.dataset)

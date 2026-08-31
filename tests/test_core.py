@@ -3,7 +3,7 @@ import json
 import pytest
 
 from transit.demand import assign_journeys, assign_logit, build_journeys, summarize_od_demand
-from transit.ingest import validate_bis_rows, validate_rows
+from transit.ingest import validate_bis_rows, validate_rows, validate_time_fields
 from transit.metrics import network_kpis, operating_metrics, required_vehicles
 from transit.scenarios import apply_changes
 
@@ -128,3 +128,10 @@ def test_network_kpis_counts_routes_and_stop_coverage():
     assert network_kpis({"R1": {"stops": ["S1", "S2"]}, "R2": {"stops": ["S2", "S3"]}}) == {
         "route_count": 2, "stop_coverage": 3, "service_trips": 0, "required_vehicles": 0,
     }
+
+
+def test_validate_time_fields_rejects_invalid_iso_and_service_time():
+    report = validate_time_fields([
+        {"transaction_time": "not-a-time", "service_start_time": "25:99"},
+    ], {"transaction_time", "service_start_time"})
+    assert {error.code for error in report.errors} == {"transaction_time.invalid", "service_start_time.invalid"}

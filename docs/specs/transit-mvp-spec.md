@@ -283,7 +283,7 @@ transit scenario compare --scenario <id> --format csv|geojson
 
 `network build`는 BIS dataset을 기준으로 정류장 좌표가 포함된 기준 네트워크 JSON을 생성한다. `scenario create --base <network_version> --file <scenario.json>`는 재현 가능한 draft를 저장하고, 이후 `scenario run --scenario <id>`가 같은 scenario 레코드를 실행 상태에서 완료 상태로 갱신한다. 상세 KPI는 조회 API의 `/scenarios/{id}/metrics/detail`에서 scope type과 metric name을 포함해 반환한다.
 
-실패 응답에는 `error_code`, `message`, `details`, 관련 `dataset_id` 또는 `scenario_id`를 포함한다. 동일 입력·파라미터 실행은 입력 해시 또는 idempotency key로 중복을 감지한다.
+실패 응답에는 `error_code`, `message`, `details`, 관련 `dataset_id` 또는 `scenario_id`를 포함한다. dataset 품질 오류는 `validation_errors`에 구조화해 저장하고 `dataset validate`에서 JSON으로 반환한다. 동일 입력·파라미터 실행은 입력 해시 또는 idempotency key로 중복을 감지한다.
 
 ## 10. 실행계획
 
