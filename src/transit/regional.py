@@ -86,6 +86,20 @@ def _member_rows(archive: zipfile.ZipFile, member_name: str) -> list[list[str]]:
     return parse_pipe_dat(_decode(archive.read(member_name)))
 
 
+def _transaction_rows(rows: list[list[str]], dataset_id: str) -> list[tuple[str, ...]]:
+    """Map the observed regional DWTCD positions into the canonical card table."""
+    result = []
+    for index, row in enumerate(rows):
+        if len(row) < 15 or not row[9]:
+            continue
+        source_key = f"{row[3]}|{row[9]}|{row[13]}|{index}"
+        transaction_id = hashlib.sha256(source_key.encode()).hexdigest()[:32]
+        journey_key = hashlib.sha256(row[3].encode()).hexdigest()[:32] if row[3] else None
+        alighting_stop = row[17] if len(row) > 17 and row[17] else None
+        result.append((transaction_id, dataset_id, row[9], journey_key, row[11] or None, row[13] or None, alighting_stop, row[21] or None if len(row) > 21 else None, "BOARDING", "OBSERVED" if alighting_stop else "UNKNOWN"))
+    return result
+
+
 def register_regional_archive(
     database_path: str | Path,
     archive_path: str | Path,
@@ -117,6 +131,10 @@ def register_regional_archive(
                 )
             if source_type == "DAILY":
                 route_member = next((m for m in inspection["members"] if m["file_type"] == "ROUTESTTN"), None)
+                transaction_member = next((m for m in inspection["members"] if m["file_type"] == "DWTCD"), None)
+                if transaction_member:
+                    transactions = _transaction_rows(_member_rows(archive, transaction_member["member_name"]), dataset_id)
+                    database.connection.executemany("INSERT OR IGNORE INTO card_transactions (id,dataset_id,transaction_time,journey_key,route_id,boarding_stop_id,alighting_stop_id,transfer_group_id,transaction_type,alighting_status) VALUES (?,?,?,?,?,?,?,?,?,?)", transactions)
                 if route_member:
                     route_rows = []
                     stop_rows = []

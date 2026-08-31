@@ -132,10 +132,13 @@ def _journey_stop_metrics(journeys: list[Journey]) -> dict[str, dict[str, float]
 
 def _persist_scope_metrics(database: Database, scenario_id: str, scope_type: str, metric_name: str,
                            base: dict[str, int | float], scenario: dict[str, int | float]) -> None:
+    rows = []
+    created_at = datetime.now(timezone.utc).isoformat()
     for scope_id, values in compare_counts(base, scenario).items():
-        database.execute(
-            "INSERT INTO metric_results (id,scenario_id,scope_type,scope_id,metric_name,base_value,scenario_value,delta_value,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (uuid.uuid4().hex, scenario_id, scope_type, scope_id, metric_name,
-             values["base_value"], values["scenario_value"], values["delta_value"],
-             datetime.now(timezone.utc).isoformat()),
-        )
+        rows.append((uuid.uuid4().hex, scenario_id, scope_type, scope_id, metric_name,
+                     values["base_value"], values["scenario_value"], values["delta_value"], created_at))
+    database.connection.executemany(
+        "INSERT INTO metric_results (id,scenario_id,scope_type,scope_id,metric_name,base_value,scenario_value,delta_value,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        rows,
+    )
+    database.connection.commit()
