@@ -19,8 +19,15 @@ class ValidationReport:
     valid: bool
     errors: list[ValidationError] = field(default_factory=list)
 
-def validate_rows(rows: Iterable[dict[str, Any]], required_fields: set[str]) -> ValidationReport:
+def validate_rows(
+    rows: Iterable[dict[str, Any]],
+    required_fields: set[str],
+    unique_fields: set[str] | None = None,
+    sequence_field: str | None = None,
+) -> ValidationReport:
     errors = []
+    seen: dict[str, set[Any]] = {field: set() for field in (unique_fields or set())}
+    seen_sequences: set[Any] = set()
     for row_number, row in enumerate(rows, start=1):
         for required in sorted(required_fields):
             if required not in row or row[required] in (None, ""):
@@ -37,6 +44,23 @@ def validate_rows(rows: Iterable[dict[str, Any]], required_fields: set[str]) -> 
             limits = (-90, 90) if coordinate == "latitude" else (-180, 180)
             if not limits[0] <= numeric <= limits[1]:
                 errors.append(ValidationError(f"{coordinate}.out_of_range", coordinate, f"row {row_number}: coordinate out of range"))
+        for field in seen:
+            value = row.get(field)
+            if value in seen[field]:
+                errors.append(ValidationError(f"{field}.duplicate", field, f"row {row_number}: duplicate value"))
+            elif value not in (None, ""):
+                seen[field].add(value)
+        if sequence_field:
+            value = row.get(sequence_field)
+            if value not in (None, ""):
+                try:
+                    sequence = int(value)
+                except (TypeError, ValueError):
+                    sequence = None
+                if sequence is not None and sequence in seen_sequences:
+                    errors.append(ValidationError(f"{sequence_field}.duplicate", sequence_field, f"row {row_number}: duplicate sequence"))
+                elif sequence is not None:
+                    seen_sequences.add(sequence)
     return ValidationReport(valid=not errors, errors=errors)
 
 def _read_csv(path: Path) -> list[dict[str, str]]:

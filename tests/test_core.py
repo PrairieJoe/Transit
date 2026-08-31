@@ -17,6 +17,20 @@ def test_validate_rows_rejects_invalid_coordinates():
     assert "latitude.out_of_range" in {error.code for error in report.errors}
 
 
+def test_validate_rows_rejects_duplicate_identifiers_and_sequences():
+    rows = [
+        {"stop_id": "S1", "stop_sequence": "1"},
+        {"stop_id": "S1", "stop_sequence": "1"},
+    ]
+
+    report = validate_rows(rows, required_fields={"stop_id", "stop_sequence"}, unique_fields={"stop_id"}, sequence_field="stop_sequence")
+
+    assert report.valid is False
+    codes = {error.code for error in report.errors}
+    assert "stop_id.duplicate" in codes
+    assert "stop_sequence.duplicate" in codes
+
+
 def test_build_journeys_keeps_unknown_alighting_without_inventing_destination():
     rows = [
         {

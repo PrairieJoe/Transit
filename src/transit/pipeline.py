@@ -27,11 +27,15 @@ def run_scenario(
 ) -> dict:
     scenario_id = f"scenario-{uuid.uuid4().hex[:12]}"
     changes = changes or []
-    scenario_network = apply_changes(base_network or {"routes": {}}, changes)
     database.execute(
         "INSERT INTO scenarios (id,name,base_network_version,status,created_at) VALUES (?,?,?,?,?)",
         (scenario_id, name, "base-v1", "running", datetime.now(timezone.utc).isoformat()),
     )
+    try:
+        scenario_network = apply_changes(base_network or {"routes": {}}, changes)
+    except (KeyError, TypeError, ValueError):
+        database.execute("UPDATE scenarios SET status = 'failed' WHERE id = ?", (scenario_id,))
+        raise
     for change in changes:
         database.execute(
             "INSERT INTO scenario_changes (id,scenario_id,change_type,payload_json) VALUES (?,?,?,?)",

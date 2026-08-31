@@ -58,3 +58,21 @@ def test_run_network_scenario_reassigns_journeys_after_route_change(tmp_path):
 
     assert result["base_counts"]["R1"] == 1.0
     assert result["scenario_counts"]["R2"] > 0
+
+
+def test_run_scenario_records_failed_status_without_mutating_base(tmp_path):
+    database = Database(tmp_path / "db.sqlite3")
+    base_network = {"routes": {"R1": {"stops": ["S1", "S2"]}}}
+
+    try:
+        run_scenario(
+            database, "invalid", {"R1": 1}, {"R1": 1}, base_network,
+            [{"change_type": "ADD_STOP", "route_id": "missing", "stop_id": "S3"}],
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid scenario should fail")
+
+    assert database.query_one("SELECT status FROM scenarios WHERE name = 'invalid'")[0] == "failed"
+    assert base_network == {"routes": {"R1": {"stops": ["S1", "S2"]}}}
