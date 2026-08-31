@@ -118,6 +118,8 @@ def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
     result = run(scenario["id"])
 
     assert result["status"] == "completed"
+    assert result["metrics"]
+    assert any(values["base_value"] > 0 for values in result["metrics"].values())
     assert database.query_one("SELECT COUNT(*) FROM route_stops")[0] == routes_before
     assert database.query_one("SELECT status FROM scenarios WHERE id = ?", (scenario["id"],))[0] == "completed"
     run_snapshot = database.query_one("SELECT status,base_snapshot,result_snapshot FROM scenario_runs WHERE scenario_id = ? ORDER BY started_at DESC LIMIT 1", (scenario["id"],))
