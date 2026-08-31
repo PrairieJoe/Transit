@@ -102,3 +102,24 @@ def test_register_common_and_daily_archives_separately_in_one_database(tmp_path)
     assert database.query_one("SELECT COUNT(*) FROM datasets")[0] == 2
     assert database.query_one("SELECT COUNT(*) FROM dataset_files WHERE dataset_id = ?", (common["dataset_id"],))[0] == 5
     assert database.query_one("SELECT COUNT(*) FROM dataset_files WHERE dataset_id = ?", (daily["dataset_id"],))[0] == 4
+
+
+def test_register_multiple_daily_archives_preserves_each_service_date_and_hash(tmp_path):
+    source = ROOT / "data/sample/daily/DATA_20240420.zip"
+    first_archive = tmp_path / "DATA_20240420.zip"
+    second_archive = tmp_path / "DATA_20240421.zip"
+    first_archive.write_bytes(source.read_bytes())
+    with ZipFile(source) as source_zip, ZipFile(second_archive, "w") as target_zip:
+        for member in source_zip.infolist():
+            target_zip.writestr(member.filename, source_zip.read(member.filename))
+
+    database_path = tmp_path / "multiple-daily.sqlite3"
+    first = register_regional_archive(database_path, first_archive, "DAILY")
+    second = register_regional_archive(database_path, second_archive, "DAILY")
+
+    from transit.db import Database
+    database = Database(database_path)
+    rows = database.query_all("SELECT service_date, file_hash FROM dataset_files WHERE dataset_id IN (?, ?) GROUP BY service_date, file_hash", (first["dataset_id"], second["dataset_id"]))
+    assert {row[0] for row in rows} == {"20240420", "20240421"}
+    assert len(database.query_all("SELECT id FROM dataset_files WHERE dataset_id IN (?, ?)", (first["dataset_id"], second["dataset_id"]))) == 8
+    assert database.query_one("SELECT file_hash FROM datasets WHERE id = ?", (first["dataset_id"],))[0] != database.query_one("SELECT file_hash FROM datasets WHERE id = ?", (second["dataset_id"],))[0]
