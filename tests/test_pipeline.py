@@ -3,7 +3,7 @@ import json
 
 from transit.db import Database
 from transit.ingest import register_file
-from transit.pipeline import run_network_scenario, run_scenario, summarize_card_demand
+from transit.pipeline import run_network_scenario, run_scenario, summarize_card_demand, summarize_stop_demand
 
 
 def test_summarize_card_demand_counts_routes(tmp_path):
@@ -20,6 +20,23 @@ def test_summarize_card_demand_counts_routes(tmp_path):
     dataset_id = register_file(database, source, "CARD")
 
     assert summarize_card_demand(database, dataset_id) == {"R1": 2, "R2": 1}
+
+
+def test_summarize_stop_demand_counts_boardings_and_alightings(tmp_path):
+    source = tmp_path / "cards.csv"
+    source.write_text(
+        "transaction_id,transaction_time,route_id,boarding_stop_id,alighting_stop_id\n"
+        "T1,2026-08-31T08:00:00,R1,S1,S2\n"
+        "T2,2026-08-31T08:01:00,R1,S1,S3\n", encoding="utf-8"
+    )
+    database = Database(tmp_path / "db.sqlite3")
+    dataset_id = register_file(database, source, "CARD")
+
+    assert summarize_stop_demand(database, dataset_id) == {
+        "S1": {"boardings": 2, "alightings": 0},
+        "S2": {"boardings": 0, "alightings": 1},
+        "S3": {"boardings": 0, "alightings": 1},
+    }
 
 
 def test_run_scenario_persists_compare_metrics(tmp_path):

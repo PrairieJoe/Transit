@@ -4,7 +4,7 @@ import pytest
 
 from transit.demand import assign_journeys, assign_logit, build_journeys
 from transit.ingest import validate_rows
-from transit.metrics import required_vehicles
+from transit.metrics import operating_metrics, required_vehicles
 from transit.scenarios import apply_changes
 
 
@@ -89,3 +89,17 @@ def test_assign_journeys_allocates_existing_demand_to_matching_routes():
 
     assert result["R1"] > result["R2"]
     assert sum(result.values()) == pytest.approx(1.0)
+
+
+def test_operating_metrics_calculates_trips_and_required_vehicles():
+    result = operating_metrics({
+        "R1": {
+            "round_trip_time_seconds": 3700,
+            "headway_seconds": 600,
+            "service_start_time": "06:00",
+            "service_end_time": "23:00",
+        }
+    })
+
+    assert result["R1"]["required_vehicles"] == 7
+    assert result["R1"]["service_trips"] == 103

@@ -10,6 +10,26 @@ def required_vehicles(round_trip_time_seconds: int | float, headway_seconds: int
         raise ValueError("round_trip_time_seconds must be non-negative and headway_seconds positive")
     return ceil(round_trip_time_seconds / headway_seconds)
 
+def operating_metrics(routes: dict[str, dict]) -> dict[str, dict[str, int | float]]:
+    result = {}
+    for route_id, route in routes.items():
+        headway = route.get("headway_seconds")
+        round_trip = route.get("round_trip_time_seconds")
+        if headway is None or round_trip is None:
+            continue
+        start_hour, start_minute = (int(value) for value in route.get("service_start_time", "06:00").split(":", 1))
+        end_hour, end_minute = (int(value) for value in route.get("service_end_time", "23:00").split(":", 1))
+        service_seconds = (end_hour * 3600 + end_minute * 60) - (start_hour * 3600 + start_minute * 60)
+        if service_seconds < 0:
+            raise ValueError("service_end_time must not be earlier than service_start_time")
+        result[route_id] = {
+            "service_trips": service_seconds // headway + 1,
+            "required_vehicles": required_vehicles(round_trip, headway),
+            "headway_seconds": headway,
+            "round_trip_time_seconds": round_trip,
+        }
+    return result
+
 def compare_counts(base: dict[str, int | float], scenario: dict[str, int | float]) -> dict[str, dict[str, int | float]]:
     return {key: {"base_value": base.get(key, 0), "scenario_value": scenario.get(key, 0), "delta_value": scenario.get(key, 0) - base.get(key, 0)} for key in sorted(set(base) | set(scenario))}
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .db import Database
 from .ingest import register_file
-from .pipeline import run_network_scenario, run_scenario, summarize_card_demand
+from .pipeline import run_network_scenario, run_scenario, summarize_card_demand, summarize_stop_demand
 from .metrics import export_geojson
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     demand_commands = demand.add_subparsers(dest="demand_command", required=True)
     summarize = demand_commands.add_parser("summarize")
     summarize.add_argument("--dataset", required=True)
+    summarize.add_argument("--scope", choices=("route", "stop"), default="route")
     scenario = commands.add_parser("scenario")
     scenario_commands = scenario.add_subparsers(dest="scenario_command", required=True)
     run = scenario_commands.add_parser("run")
@@ -49,7 +50,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"dataset_id={row[0]} quality_status={row[1]}")
             return 0 if row[1] == "passed" else 1
         if args.command == "demand" and args.demand_command == "summarize":
-            print(json.dumps(summarize_card_demand(database, args.dataset), ensure_ascii=False, sort_keys=True))
+            summary = summarize_stop_demand(database, args.dataset) if args.scope == "stop" else summarize_card_demand(database, args.dataset)
+            print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
             return 0
         if args.command == "scenario" and args.scenario_command == "run":
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))

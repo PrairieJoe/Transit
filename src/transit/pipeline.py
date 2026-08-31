@@ -17,6 +17,25 @@ def summarize_card_demand(database: Database, dataset_id: str) -> dict[str, int]
     )
     return {route_id: count for route_id, count in rows}
 
+
+def summarize_stop_demand(database: Database, dataset_id: str) -> dict[str, dict[str, int]]:
+    result: dict[str, dict[str, int]] = {}
+    boarding_rows = database.query_all(
+        "SELECT boarding_stop_id, COUNT(*) FROM card_transactions "
+        "WHERE dataset_id = ? AND boarding_stop_id IS NOT NULL GROUP BY boarding_stop_id",
+        (dataset_id,),
+    )
+    alighting_rows = database.query_all(
+        "SELECT alighting_stop_id, COUNT(*) FROM card_transactions "
+        "WHERE dataset_id = ? AND alighting_stop_id IS NOT NULL GROUP BY alighting_stop_id",
+        (dataset_id,),
+    )
+    for stop_id, count in boarding_rows:
+        result.setdefault(stop_id, {"boardings": 0, "alightings": 0})["boardings"] = count
+    for stop_id, count in alighting_rows:
+        result.setdefault(stop_id, {"boardings": 0, "alightings": 0})["alightings"] = count
+    return dict(sorted(result.items()))
+
 def run_scenario(
     database: Database,
     name: str,

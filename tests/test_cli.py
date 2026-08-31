@@ -31,6 +31,19 @@ def test_cli_demand_summarize_prints_route_counts(tmp_path, capsys):
     assert '"R1": 1' in capsys.readouterr().out
 
 
+def test_cli_demand_summarize_supports_stop_scope(tmp_path, capsys):
+    source = tmp_path / "cards.csv"
+    source.write_text(
+        "transaction_id,transaction_time,route_id,boarding_stop_id,alighting_stop_id\n"
+        "T1,2026-08-31T08:00:00,R1,S1,S2\n", encoding="utf-8"
+    )
+    db_path = tmp_path / "transit.sqlite3"
+    dataset_id = register_file(Database(db_path), source, "CARD")
+
+    assert main(["--db", str(db_path), "demand", "summarize", "--dataset", dataset_id, "--scope", "stop"]) == 0
+    assert '"S1": {"alightings": 0, "boardings": 1}' in capsys.readouterr().out
+
+
 def test_cli_scenario_run_prints_metrics(tmp_path, capsys):
     scenario_file = tmp_path / "scenario.json"
     scenario_file.write_text('{"name":"new route","base_counts":{"R1":10},"scenario_counts":{"R1":13}}', encoding="utf-8")
