@@ -29,3 +29,18 @@ def test_run_scenario_persists_compare_metrics(tmp_path):
     assert result["scenario_id"]
     assert result["metrics"]["R1"]["delta_value"] == 3
     assert database.query_one("SELECT status FROM scenarios")[0] == "completed"
+
+
+def test_run_scenario_applies_route_changes_and_returns_network(tmp_path):
+    database = Database(tmp_path / "db.sqlite3")
+    result = run_scenario(
+        database,
+        "route change",
+        {"R1": 10},
+        {"R1": 8, "R2": 2},
+        base_network={"routes": {"R1": {"stops": ["S1", "S2"]}}},
+        changes=[{"change_type": "CREATE_ROUTE", "route_id": "R2", "stops": ["S2", "S3"]}],
+    )
+
+    assert result["scenario_network"]["routes"]["R2"]["stops"] == ["S2", "S3"]
+    assert database.query_one("SELECT COUNT(*) FROM scenario_changes")[0] == 1

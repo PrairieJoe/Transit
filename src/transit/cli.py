@@ -6,6 +6,7 @@ from pathlib import Path
 from .db import Database
 from .ingest import register_file
 from .pipeline import run_scenario, summarize_card_demand
+from .metrics import export_geojson
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="transit", description="Transit demand and bus scenario analysis")
@@ -28,8 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--file", required=True)
     compare = scenario_commands.add_parser("compare")
     compare.add_argument("--scenario", required=True)
-    compare.add_argument("--format", choices=("json", "csv"), default="json")
+    compare.add_argument("--format", choices=("json", "csv", "geojson"), default="json")
     compare.add_argument("--output")
+    compare.add_argument("--network")
     return parser
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,7 +53,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "scenario" and args.scenario_command == "run":
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
-            result = run_scenario(database, payload["name"], payload["base_counts"], payload["scenario_counts"])
+            result = run_scenario(
+                database,
+                payload["name"],
+                payload["base_counts"],
+                payload["scenario_counts"],
+                payload.get("base_network"),
+                payload.get("changes"),
+            )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         if args.command == "scenario" and args.scenario_command == "compare":
@@ -68,6 +77,19 @@ def main(argv: list[str] | None = None) -> int:
                 from .metrics import export_metrics_csv
                 target = Path(args.output or "metrics.csv")
                 export_metrics_csv(target, result)
+                print(f"output={target}")
+            elif args.format == "geojson":
+                if not args.network:
+                    print("error_code=network.required_for_geojson")
+                    return 1
+                network = json.loads(Path(args.network).read_text(encoding="utf-8"))
+                features = [
+                    {"id": route_id, "coordinates": route.get("coordinates", [])}
+                    for route_id, route in network.get("routes", {}).items()
+                    if route.get("coordinates")
+                ]
+                target = Path(args.output or "routes.geojson")
+                export_geojson(target, features)
                 print(f"output={target}")
             else:
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True))
