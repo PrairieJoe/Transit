@@ -14,6 +14,8 @@ from ..network import build_network
 from ..pipeline import run_network_scenario
 from ..regional import RegionalArchiveError, register_regional_archive
 
+REQUIRED_REGIONAL_MAPPING_FIELDS = {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude", "transaction_time", "boarding_stop_id"}
+
 def create_app(database: Database | None = None) -> FastAPI:
     app = FastAPI(title="Transit API", version="0.1.0")
     app.add_middleware(
@@ -102,6 +104,8 @@ def create_app(database: Database | None = None) -> FastAPI:
             {"source_file_type": "ROUTE", "source_column": "3", "canonical_field": "route_id", "confidence": 0.95},
             {"source_file_type": "ROUTE", "source_column": "4", "canonical_field": "route_name", "confidence": 0.95},
             {"source_file_type": "ROUTESTTN", "source_column": "7", "canonical_field": "stop_id", "confidence": 0.98},
+            {"source_file_type": "ROUTESTTN", "source_column": "6", "canonical_field": "stop_sequence", "confidence": 0.98},
+            {"source_file_type": "ROUTESTTN", "source_column": "8", "canonical_field": "stop_name", "confidence": 0.98},
             {"source_file_type": "ROUTESTTN", "source_column": "9", "canonical_field": "latitude", "confidence": 0.99},
             {"source_file_type": "ROUTESTTN", "source_column": "10", "canonical_field": "longitude", "confidence": 0.99},
             {"source_file_type": "DWTCD", "source_column": "9", "canonical_field": "transaction_time", "confidence": 0.9},
@@ -285,6 +289,11 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail={"error_code": "dataset.not_ready", "message": "dataset quality validation must pass before analysis", "scenario_id": scenario_id})
         if quality and not db.query_one("SELECT 1 FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1 LIMIT 1", (scenario[1],)):
             raise HTTPException(status_code=422, detail={"error_code": "dataset.not_ready", "message": "dataset mapping must be confirmed before analysis", "scenario_id": scenario_id})
+        if quality:
+            confirmed_fields = {row[0] for row in db.query_all("SELECT DISTINCT canonical_field FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1", (scenario[1],))}
+            missing_fields = sorted(REQUIRED_REGIONAL_MAPPING_FIELDS - confirmed_fields)
+            if missing_fields:
+                raise HTTPException(status_code=422, detail={"error_code": "dataset.mapping_incomplete", "message": "required regional mappings are missing", "details": {"missing_fields": missing_fields}, "scenario_id": scenario_id})
         payload = db.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (scenario_id,))
         changes = json.loads(payload[0]).get("changes", []) if payload else []
         run_id = f"run-{uuid.uuid4().hex[:12]}"

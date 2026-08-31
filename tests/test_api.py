@@ -111,7 +111,8 @@ def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
     create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
     run = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/run")
     mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "POST" in route.methods)
-    mapping(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_column": "route_id", "canonical_field": "route_id"}]})
+    suggestions = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "GET" in route.methods)(registered["dataset_id"])["suggestions"]
+    mapping(registered["dataset_id"], {"confirmed": True, "mappings": suggestions})
     routes_before = database.query_one("SELECT COUNT(*) FROM route_stops")[0]
     scenario = create({"name": "regional e2e", "base_network_version": registered["dataset_id"], "changes": [{"change_type": "REMOVE_STOP", "route_id": "46001001", "stop_id": "4600433"}]})
 
