@@ -173,7 +173,7 @@ def register_regional_archive(
         existing = database.query_one("SELECT id FROM datasets WHERE file_hash = ?", (archive_hash,))
         if existing:
             quality_status = database.query_one("SELECT quality_status FROM datasets WHERE id = ?", (existing[0],))[0]
-            return {**inspection, "dataset_id": existing[0], "quality_status": quality_status, "reused": True}
+            return {**inspection, "dataset_id": existing[0], "source_type": source_type, "quality_status": quality_status, "reused": True}
         dataset_id = f"{source_type.lower()}-{archive_hash[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         database.execute(
@@ -195,7 +195,7 @@ def register_regional_archive(
             quality_status = "failed" if quality_errors else "passed"
             database.execute("UPDATE datasets SET quality_status = ? WHERE id = ?", (quality_status, dataset_id))
             if quality_errors:
-                return {**inspection, "dataset_id": dataset_id, "quality_status": quality_status, "reused": False}
+                return {**inspection, "dataset_id": dataset_id, "source_type": source_type, "quality_status": quality_status, "reused": False}
             if source_type == "DAILY":
                 route_member = next((m for m in inspection["members"] if m["file_type"] == "ROUTESTTN"), None)
                 transaction_member = next((m for m in inspection["members"] if m["file_type"] == "DWTCD"), None)
@@ -224,6 +224,6 @@ def register_regional_archive(
                     database.connection.executemany("INSERT OR IGNORE INTO stops (id,source_dataset_id,source_stop_id,name,latitude,longitude,canonical_status) VALUES (?,?,?,?,?,?,?)", stop_rows)
                     database.connection.executemany("INSERT OR IGNORE INTO route_stops (route_id,stop_id,stop_sequence,distance_m,travel_time_s,source_type) VALUES (?,?,?,?,?,?)", route_stop_rows)
                     database.connection.commit()
-        return {**inspection, "dataset_id": dataset_id, "quality_status": quality_status, "reused": False}
+        return {**inspection, "dataset_id": dataset_id, "source_type": source_type, "quality_status": quality_status, "reused": False}
     finally:
         database.close()

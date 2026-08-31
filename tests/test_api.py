@@ -156,6 +156,24 @@ def test_api_accepts_daily_zip_upload(tmp_path):
     assert response.json()["service_date"] == "20240420"
 
 
+def test_api_upload_to_compare_real_regional_flow(tmp_path):
+    root = __import__("pathlib").Path(__file__).parents[1]
+    client = TestClient(create_app(Database(tmp_path / "upload-to-compare.sqlite3")))
+    common = client.post("/datasets/uploads/common", files={"file": ("COMMONCD.zip", (root / "data/sample/common/COMMONCD.zip").read_bytes(), "application/zip")}).json()
+    daily = client.post("/datasets/uploads/daily", files={"file": ("DATA_20240420.zip", (root / "data/sample/daily/DATA_20240420.zip").read_bytes(), "application/zip")}).json()
+    suggestions = client.get(f"/datasets/{daily['dataset_id']}/mapping").json()["suggestions"]
+    mapping = client.post(f"/datasets/{daily['dataset_id']}/mapping", json={"confirmed": True, "mappings": suggestions})
+    routes = client.get(f"/networks/{daily['dataset_id']}/routes").json()
+    route = next(item for item in routes if len(item["stops"]) >= 3)
+    scenario = client.post("/scenarios", json={"name": "업로드 흐름 검증", "base_network_version": daily["dataset_id"], "changes": [{"change_type": "REMOVE_STOP", "route_id": route["id"], "stop_id": route["stops"][-1]}]}).json()
+    run = client.post(f"/scenarios/{scenario['id']}/run")
+
+    assert common["source_type"] == "COMMON"
+    assert mapping.json()["mapping_status"] == "confirmed"
+    assert run.status_code == 200
+    assert client.get(f"/scenarios/{scenario['id']}/metrics/detail").json()
+
+
 def test_api_http_request_can_use_database_from_fastapi_threadpool(tmp_path):
     database = Database(tmp_path / "threaded.sqlite3")
     database.execute("INSERT INTO datasets VALUES (?,?,?,?,?,?,?,?)", ("ds1", "sample", "DAILY", "sample.zip", "hash-thread", "1.0", "passed", "now"))
