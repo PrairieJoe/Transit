@@ -1,4 +1,5 @@
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -51,6 +52,27 @@ def test_register_regional_archive_indexes_members_and_service_date(tmp_path):
 def test_register_regional_archive_rejects_unknown_source_type(tmp_path):
     with pytest.raises(RegionalArchiveError, match="source_type"):
         register_regional_archive(tmp_path / "db.sqlite3", ROOT / "data/sample/daily/DATA_20240420.zip", "CARD")
+
+
+def test_register_regional_archive_persists_structured_quality_errors(tmp_path):
+    archive_path = tmp_path / "DATA_20240420.zip"
+    route_stop_rows = "\n".join([
+        "20240420|03|MM10146000|R1|Route|B|0|S1|Stop 1|91.0|127.0|~|0|0",
+        "20240420|03|MM10146000|R1|Route|B|0|S2|Stop 2|35.0|127.0|~|0|0",
+        "20240420|03|MM10146000|R1|Route|B|0|S3|Stop 3|35.1|127.1|~|0|0",
+    ])
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr("ROUTESTTN_20240420.dat", route_stop_rows)
+
+    database_path = tmp_path / "regional.sqlite3"
+    result = register_regional_archive(database_path, archive_path, "DAILY")
+
+    assert result["quality_status"] == "failed"
+    from transit.db import Database
+    database = Database(database_path)
+    codes = {row[0] for row in database.query_all("SELECT error_code FROM validation_errors WHERE dataset_id = ?", (result["dataset_id"],))}
+    assert "latitude.out_of_range" in codes
+    assert database.query_one("SELECT COUNT(*) FROM routes WHERE source_dataset_id = ?", (result["dataset_id"],))[0] == 0
 
 
 def test_register_common_and_daily_archives_separately_in_one_database(tmp_path):

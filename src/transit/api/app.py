@@ -223,6 +223,24 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="database is not configured")
         return [{"id": row[0], "name": row[1], "base_network_version": row[2], "status": row[3], "created_at": row[4]} for row in db.query_all("SELECT id,name,base_network_version,status,created_at FROM scenarios ORDER BY created_at DESC")]
 
+    @app.patch("/scenarios/{scenario_id}")
+    def update_scenario(scenario_id: str, payload: dict) -> dict:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        current = db.query_one("SELECT id,name,base_network_version,status FROM scenarios WHERE id = ?", (scenario_id,))
+        if not current:
+            raise HTTPException(status_code=404, detail="scenario not found")
+        if current[3] != "draft":
+            raise HTTPException(status_code=409, detail={"error_code": "scenario.not_editable", "message": "only draft scenarios can be edited", "scenario_id": scenario_id})
+        name = payload.get("name", current[1])
+        changes = payload.get("changes", [])
+        db.execute("UPDATE scenarios SET name = ? WHERE id = ?", (name, scenario_id))
+        db.execute("DELETE FROM scenario_changes WHERE scenario_id = ?", (scenario_id,))
+        for change in changes:
+            db.execute("INSERT INTO scenario_changes (id,scenario_id,change_type,payload_json) VALUES (?,?,?,?)", (uuid.uuid4().hex, scenario_id, change["change_type"], json.dumps(change, ensure_ascii=False)))
+        db.execute("UPDATE scenario_inputs SET payload_json = ? WHERE scenario_id = ?", (json.dumps({**payload, "name": name, "base_network_version": current[2], "changes": changes}, ensure_ascii=False), scenario_id))
+        return {"id": scenario_id, "name": name, "base_network_version": current[2], "status": "draft", "changes": changes}
+
     @app.get("/scenarios/{scenario_id}")
     def scenario_detail(scenario_id: str) -> dict:
         if db is None:
@@ -249,6 +267,11 @@ def create_app(database: Database | None = None) -> FastAPI:
         scenario = db.query_one("SELECT name,base_network_version,status FROM scenarios WHERE id = ?", (scenario_id,))
         if not scenario:
             raise HTTPException(status_code=404, detail="scenario not found")
+        quality = db.query_one("SELECT quality_status FROM datasets WHERE id = ?", (scenario[1],))
+        if quality and quality[0] != "passed":
+            raise HTTPException(status_code=422, detail={"error_code": "dataset.not_ready", "message": "dataset quality validation must pass before analysis", "scenario_id": scenario_id})
+        if quality and not db.query_one("SELECT 1 FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1 LIMIT 1", (scenario[1],)):
+            raise HTTPException(status_code=422, detail={"error_code": "dataset.not_ready", "message": "dataset mapping must be confirmed before analysis", "scenario_id": scenario_id})
         payload = db.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (scenario_id,))
         changes = json.loads(payload[0]).get("changes", []) if payload else []
         try:

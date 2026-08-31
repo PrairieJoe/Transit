@@ -55,7 +55,7 @@ def test_api_creates_and_reads_scenario_draft(tmp_path):
     database = Database(tmp_path / "scenario-api.sqlite3")
     app = create_app(database)
     create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
-    read = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}")
+    read = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}" and "GET" in route.methods)
 
     created = create({
         "name": "정류장 조정",
@@ -65,6 +65,21 @@ def test_api_creates_and_reads_scenario_draft(tmp_path):
 
     assert created["status"] == "draft"
     assert read(created["id"])["changes"][0]["change_type"] == "REMOVE_STOP"
+
+
+def test_api_updates_scenario_draft(tmp_path):
+    database = Database(tmp_path / "scenario-patch.sqlite3")
+    app = create_app(database)
+    create = next(route.endpoint for route in app.routes if route.path == "/scenarios" and "POST" in route.methods)
+    update = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}" and "PATCH" in route.methods)
+    read = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}" and "GET" in route.methods)
+    created = create({"name": "초안", "base_network_version": "base-v1", "changes": []})
+
+    updated = update(created["id"], {"name": "수정 초안", "changes": [{"change_type": "CHANGE_HEADWAY", "route_id": "R1", "headway_s": 600}]})
+
+    assert updated["status"] == "draft"
+    assert read(created["id"])["name"] == "수정 초안"
+    assert read(created["id"])["changes"][0]["change_type"] == "CHANGE_HEADWAY"
 
 
 def test_api_returns_network_geojson_and_mapping(tmp_path):
@@ -92,6 +107,8 @@ def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
     app = create_app(database)
     create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
     run = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/run")
+    mapping = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/mapping" and "POST" in route.methods)
+    mapping(registered["dataset_id"], {"confirmed": True, "mappings": [{"source_column": "route_id", "canonical_field": "route_id"}]})
     routes_before = database.query_one("SELECT COUNT(*) FROM route_stops")[0]
     scenario = create({"name": "regional e2e", "base_network_version": registered["dataset_id"], "changes": [{"change_type": "REMOVE_STOP", "route_id": "46001001", "stop_id": "4600433"}]})
 
@@ -134,3 +151,16 @@ def test_api_exposes_mapping_suggestions_for_regional_dataset(tmp_path):
 
     assert result["dataset_id"] == registered["dataset_id"]
     assert any(item["canonical_field"] == "route_id" for item in result["suggestions"])
+
+
+def test_api_blocks_scenario_run_until_mapping_is_confirmed(tmp_path):
+    database_path = tmp_path / "blocked.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    client = TestClient(create_app(Database(database_path)))
+
+    scenario = client.post("/scenarios", json={"name": "Pending mapping", "base_network_version": registered["dataset_id"], "changes": []}).json()
+    response = client.post(f"/scenarios/{scenario['id']}/run")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["error_code"] == "dataset.not_ready"

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .db import Database
+from .ingest import ValidationError
 
 
 class RegionalArchiveError(ValueError):
@@ -86,6 +87,47 @@ def _member_rows(archive: zipfile.ZipFile, member_name: str) -> list[list[str]]:
     return parse_pipe_dat(_decode(archive.read(member_name)))
 
 
+def _regional_quality_errors(archive: zipfile.ZipFile, members: list[dict[str, Any]]) -> list[ValidationError]:
+    """Validate the canonical fields needed by the regional route/network flow."""
+    errors: list[ValidationError] = []
+    seen_sequences: set[tuple[str, int]] = set()
+    for member in members:
+        if member["file_type"] not in {"ROUTE", "ROUTESTTN", "STTN"}:
+            continue
+        for row_number, row in enumerate(_member_rows(archive, member["member_name"]), start=1):
+            if member["file_type"] == "ROUTE":
+                required = {3: "route_id", 4: "route_name"}
+            elif member["file_type"] == "ROUTESTTN":
+                required = {3: "route_id", 7: "stop_id", 8: "stop_name", 6: "stop_sequence", 9: "latitude", 10: "longitude"}
+            else:
+                required = {3: "stop_id", 4: "stop_name", 6: "latitude", 7: "longitude"}
+            for position, field in required.items():
+                if len(row) <= position or row[position] == "":
+                    errors.append(ValidationError(f"{field}.missing", field, f"row {row_number}: required regional column {position} is missing"))
+            if member["file_type"] in {"ROUTESTTN", "STTN"}:
+                for position, field, lower, upper in ((6 if member["file_type"] == "STTN" else 9, "latitude", -90, 90), (7 if member["file_type"] == "STTN" else 10, "longitude", -180, 180)):
+                    if len(row) <= position or row[position] == "":
+                        continue
+                    try:
+                        value = float(row[position])
+                    except ValueError:
+                        errors.append(ValidationError(f"{field}.invalid", field, f"row {row_number}: coordinate is not numeric"))
+                        continue
+                    if not lower <= value <= upper:
+                        errors.append(ValidationError(f"{field}.out_of_range", field, f"row {row_number}: coordinate out of range"))
+            if member["file_type"] == "ROUTESTTN" and len(row) > 7:
+                try:
+                    sequence = int(row[6])
+                except ValueError:
+                    errors.append(ValidationError("stop_sequence.invalid", "stop_sequence", f"row {row_number}: sequence is not numeric"))
+                else:
+                    key = (row[3], sequence)
+                    if key in seen_sequences:
+                        errors.append(ValidationError("stop_sequence.duplicate", "stop_sequence", f"row {row_number}: duplicate sequence on route"))
+                    seen_sequences.add(key)
+    return errors
+
+
 def _transaction_rows(rows: list[list[str]], dataset_id: str) -> list[tuple[str, ...]]:
     """Map the observed regional DWTCD positions into the canonical card table."""
     result = []
@@ -129,6 +171,16 @@ def register_regional_archive(
                     "INSERT INTO dataset_files (id,dataset_id,archive_name,member_name,file_type,file_hash,service_date,created_at) VALUES (?,?,?,?,?,?,?,?)",
                     (uuid.uuid4().hex, dataset_id, path.name, member["member_name"], member["file_type"], member["file_hash"], inspection["service_date"], now),
                 )
+            quality_errors = _regional_quality_errors(archive, inspection["members"]) if source_type == "DAILY" else []
+            for error in quality_errors:
+                database.execute(
+                    "INSERT INTO validation_errors (id,dataset_id,error_code,field,message) VALUES (?,?,?,?,?)",
+                    (uuid.uuid4().hex, dataset_id, error.code, error.field, error.message),
+                )
+            quality_status = "failed" if quality_errors else "passed"
+            database.execute("UPDATE datasets SET quality_status = ? WHERE id = ?", (quality_status, dataset_id))
+            if quality_errors:
+                return {**inspection, "dataset_id": dataset_id, "quality_status": quality_status, "reused": False}
             if source_type == "DAILY":
                 route_member = next((m for m in inspection["members"] if m["file_type"] == "ROUTESTTN"), None)
                 transaction_member = next((m for m in inspection["members"] if m["file_type"] == "DWTCD"), None)
@@ -157,6 +209,6 @@ def register_regional_archive(
                     database.connection.executemany("INSERT OR IGNORE INTO stops (id,source_dataset_id,source_stop_id,name,latitude,longitude,canonical_status) VALUES (?,?,?,?,?,?,?)", stop_rows)
                     database.connection.executemany("INSERT OR IGNORE INTO route_stops (route_id,stop_id,stop_sequence,distance_m,travel_time_s,source_type) VALUES (?,?,?,?,?,?)", route_stop_rows)
                     database.connection.commit()
-        return {**inspection, "dataset_id": dataset_id, "quality_status": "passed", "reused": False}
+        return {**inspection, "dataset_id": dataset_id, "quality_status": quality_status, "reused": False}
     finally:
         database.close()
