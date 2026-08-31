@@ -7,6 +7,7 @@ type Metric = { scope_type: string; scope_id: string; metric_name: string; base_
 type DatasetDetail = Dataset & { mapping_status: string; files: { member_name: string; file_type: string; service_date?: string }[] }
 type Mapping = { source_file_type: string; source_column: string; canonical_field: string; confidence: number }
 type ValidationError = { error_code: string; field: string; message: string }
+type ScenarioStatus = 'pending' | 'running' | 'completed' | 'failed' | ''
 
 const API = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
@@ -36,6 +37,7 @@ export default function App() {
   const [mappingSuggestions, setMappingSuggestions] = useState<Mapping[]>([])
   const [mappingConfirmed, setMappingConfirmed] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+  const [scenarioStatus, setScenarioStatus] = useState<ScenarioStatus>('')
   const mapContainer = useRef<HTMLDivElement>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedStops, setEditedStops] = useState<string[]>([])
@@ -94,18 +96,21 @@ export default function App() {
   })
   const saveScenario = async () => {
     if (!selectedRoute) return
+    setScenarioStatus('pending')
     try {
       const changes = [{ change_type: 'REORDER_STOP', route_id: selectedRoute.id, stops: editedStops }, { change_type: 'CHANGE_HEADWAY', route_id: selectedRoute.id, headway_seconds: headway }, { change_type: 'CHANGE_SERVICE_WINDOW', route_id: selectedRoute.id, service_start_time: serviceStart, service_end_time: serviceEnd }]
       const response = await fetch(`${API}/scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${selectedRoute.id} 정류장 조정`, base_network_version: selectedDataset, changes }) })
       if (!response.ok) throw new Error(await response.text())
       const scenario = await response.json()
+      setScenarioStatus('running')
       const run = await fetch(`${API}/scenarios/${scenario.id}/run`, { method: 'POST' })
       if (!run.ok) throw new Error(await run.text())
       const detail = await get<Metric[]>(`/scenarios/${scenario.id}/metrics/detail`)
       setMetrics(detail.filter(item => item.scope_type === 'ROUTE' || item.scope_type === 'NETWORK'))
+      setScenarioStatus('completed')
       setMessage(`시나리오 ${scenario.id} 실행 완료. Base와 Scenario 결과를 확인하세요.`)
       setEditMode(false)
-    } catch (error) { setMessage(error instanceof Error ? error.message : '시나리오 실행 실패') }
+    } catch (error) { setScenarioStatus('failed'); setMessage(error instanceof Error ? error.message : '시나리오 실행 실패') }
   }
   const confirmMapping = async () => {
     try {
@@ -144,6 +149,7 @@ export default function App() {
         <aside className="panel routes"><div className="panel-title"><span>노선 목록</span><small>{routes.length}개</small></div>{routes.map(route => <button className={`route ${selectedRoute?.id === route.id ? 'active' : ''}`} key={route.id} onClick={() => setSelectedRoute(route)}><strong>{route.id}</strong><span>{route.name}</span><small>{route.stops.length}개 정류장</small></button>)}{routes.length === 0 && <p className="empty">검증된 일별 데이터를 선택하면 노선이 표시됩니다.</p>}</aside>
       </section>
       <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <><div className="stop-editor">{editedStops.map((stop, index) => <div className="stop-row" key={`${stop}-${index}`}><span>{index + 1}. {stop}</span><button type="button" onClick={() => moveStop(index, -1)} disabled={index === 0}>↑</button><button type="button" onClick={() => moveStop(index, 1)} disabled={index === editedStops.length - 1}>↓</button><button type="button" onClick={() => setEditedStops(stops => stops.length > 2 ? stops.filter((_, current) => current !== index) : stops)}>삭제</button></div>)}</div><div className="edit-controls"><button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button><label>배차 <input type="number" min="60" step="60" value={headway} onChange={event => setHeadway(Number(event.target.value))} />초</label><label>운행 <input type="time" value={serviceStart} onChange={event => setServiceStart(event.target.value)} /> ~ <input type="time" value={serviceEnd} onChange={event => setServiceEnd(event.target.value)} /></label></div></>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
+      {scenarioStatus && <div className={`scenario-status ${scenarioStatus}`}>시나리오 상태: <strong>{scenarioStatus}</strong></div>}
       {metrics.length > 0 && <section className="results"><div className="panel-title"><span>Base vs Scenario</span><small>최근 실행 결과</small></div><table><thead><tr><th>범위</th><th>지표</th><th>Base</th><th>Scenario</th><th>변화</th></tr></thead><tbody>{metrics.map(metric => <tr key={`${metric.scope_type}-${metric.scope_id}-${metric.metric_name}`}><td>{metric.scope_id}</td><td>{metric.metric_name}</td><td>{metric.base_value.toFixed(1)}</td><td>{metric.scenario_value.toFixed(1)}</td><td className={metric.delta_value < 0 ? 'negative' : 'positive'}>{metric.delta_value > 0 ? '+' : ''}{metric.delta_value.toFixed(1)}</td></tr>)}</tbody></table></section>}
       <div className="message">{message}</div>
     </main>
