@@ -120,14 +120,18 @@ export default function App() {
       setMessage('표준 필드 매핑을 확정했습니다.')
     } catch (error) { setMessage(error instanceof Error ? error.message : '매핑 확정 실패') }
   }
-  const handleUpload = async (kind: 'common' | 'daily', file?: File) => {
-    if (!file) return
+  const handleUpload = async (kind: 'common' | 'daily', files?: FileList | File[]) => {
+    const selectedFiles = files ? Array.from(files) : []
+    if (selectedFiles.length === 0) return
     setUploading(true)
     try {
-      const result = await upload(`/datasets/uploads/${kind}`, file)
-      setMessage(`${result.name ?? file.name} 업로드 완료. 내부 파일 ${result.members?.length ?? 0}개를 확인했습니다.`)
+      let lastResult: Dataset | undefined
+      for (const file of selectedFiles) {
+        lastResult = await upload(`/datasets/uploads/${kind}`, file)
+      }
+      setMessage(`${selectedFiles.length}개 ${kind === 'daily' ? '일별 ' : ''}압축파일 업로드 완료. 마지막 파일 내부 파일 ${lastResult?.members?.length ?? 0}개를 확인했습니다.`)
       await refresh()
-      setSelectedDataset(result.dataset_id ?? result.id)
+      if (lastResult) setSelectedDataset(lastResult.dataset_id ?? lastResult.id)
     } catch (error) { setMessage(error instanceof Error ? error.message : '업로드 실패') }
     finally { setUploading(false) }
   }
@@ -136,8 +140,8 @@ export default function App() {
     <header><div><p className="eyebrow">TRANSIT / FIELD WORKSPACE</p><h1>지역 교통 수요 분석</h1></div><span className="status-dot">● API 연결 대기</span></header>
     <main>
       <section className="intro"><div><p className="eyebrow">01 · DATA INTAKE</p><h2>분석할 지역 데이터를 준비하세요</h2><p>공통코드와 일자별 ZIP을 각각 등록하면 품질을 확인한 뒤 지도에서 노선을 조정할 수 있습니다.</p></div><div className="upload-grid">
-        <label className="upload-card"><strong>공통코드 ZIP</strong><span>COMMONCD.zip</span><input type="file" accept=".zip" onChange={event => handleUpload('common', event.target.files?.[0])} /></label>
-        <label className="upload-card"><strong>일자별 데이터 ZIP</strong><span>DATA_YYYYMMDD.zip</span><input type="file" accept=".zip" onChange={event => handleUpload('daily', event.target.files?.[0])} /></label>
+        <label className="upload-card"><strong>공통코드 ZIP</strong><span>COMMONCD.zip</span><input type="file" accept=".zip" onChange={event => handleUpload('common', event.target.files ?? undefined)} /></label>
+        <label className="upload-card"><strong>일자별 데이터 ZIP</strong><span>DATA_YYYYMMDD.zip · 여러 파일 선택 가능</span><input type="file" accept=".zip" multiple onChange={event => handleUpload('daily', event.target.files ?? undefined)} /></label>
       </div></section>
       {uploading && <div className="notice">압축파일을 분석하고 있습니다...</div>}
       {datasetDetail && <div className="quality-strip"><strong>{datasetDetail.quality_status === 'passed' ? '✓ 품질검사 통과' : '⚠ 품질검사 확인 필요'}</strong><span>매핑 {datasetDetail.mapping_status}</span><span>내부 파일 {datasetDetail.files.length}개</span><span>{[...new Set(datasetDetail.files.map(file => file.service_date).filter(Boolean))].join(', ') || '공통코드'}</span></div>}
