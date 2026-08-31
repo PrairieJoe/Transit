@@ -135,7 +135,7 @@ Transit/
 ## 로컬 실행
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[dev,api,parquet]"
 python -m pytest -q
 ```
 
@@ -164,6 +164,23 @@ python -m transit.cli scenario compare --scenario <scenario-id> --format geojson
 - KPI 비교 및 GeoJSON export primitive
 
 세부 구현 기준과 후속 개발 순서는 [`docs/specs/transit-mvp-spec.md`](docs/specs/transit-mvp-spec.md)를 참고하세요.
+
+## 조회 API
+
+FastAPI 조회 계층은 애플리케이션 코드에서 다음과 같이 생성할 수 있습니다.
+
+```python
+from transit.api.app import create_app
+from transit.db import Database
+
+app = create_app(Database("data/transit.sqlite3"))
+```
+
+제공 endpoint:
+
+- `GET /health`
+- `GET /datasets/{dataset_id}/demand`
+- `GET /scenarios/{scenario_id}/metrics`
 
 ## 라이선스
 

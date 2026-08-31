@@ -1,0 +1,44 @@
+"""FastAPI read API for the Transit MVP."""
+from fastapi import FastAPI, HTTPException
+
+from ..db import Database
+
+def create_app(database: Database | None = None) -> FastAPI:
+    app = FastAPI(title="Transit API", version="0.1.0")
+    db = database
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/datasets/{dataset_id}/demand")
+    def dataset_demand(dataset_id: str) -> dict[str, int]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        rows = db.query_all(
+            "SELECT COALESCE(route_id, 'UNKNOWN'), COUNT(*) FROM card_transactions "
+            "WHERE dataset_id = ? GROUP BY COALESCE(route_id, 'UNKNOWN')",
+            (dataset_id,),
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="dataset demand not found")
+        return {route_id: count for route_id, count in rows}
+
+    @app.get("/scenarios/{scenario_id}/metrics")
+    def scenario_metrics(scenario_id: str) -> dict[str, dict[str, float]]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        rows = db.query_all(
+            "SELECT scope_id, base_value, scenario_value, delta_value "
+            "FROM metric_results WHERE scenario_id = ? ORDER BY scope_id",
+            (scenario_id,),
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="scenario metrics not found")
+        return {
+            scope_id: {"base_value": base, "scenario_value": scenario, "delta_value": delta}
+            for scope_id, base, scenario, delta in rows
+        }
+
+    return app
+
