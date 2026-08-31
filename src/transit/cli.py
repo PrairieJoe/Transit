@@ -26,6 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     scenario_commands = scenario.add_subparsers(dest="scenario_command", required=True)
     run = scenario_commands.add_parser("run")
     run.add_argument("--file", required=True)
+    compare = scenario_commands.add_parser("compare")
+    compare.add_argument("--scenario", required=True)
     return parser
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,6 +50,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "scenario" and args.scenario_command == "run":
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
             result = run_scenario(database, payload["name"], payload["base_counts"], payload["scenario_counts"])
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.command == "scenario" and args.scenario_command == "compare":
+            rows = database.query_all(
+                "SELECT scope_id, base_value, scenario_value, delta_value "
+                "FROM metric_results WHERE scenario_id = ? ORDER BY scope_id",
+                (args.scenario,),
+            )
+            if not rows:
+                print(f"error_code=scenario.not_found_or_empty scenario_id={args.scenario}")
+                return 1
+            result = {scope_id: {"base_value": base, "scenario_value": scenario, "delta_value": delta} for scope_id, base, scenario, delta in rows}
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         return 2

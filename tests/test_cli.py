@@ -3,6 +3,7 @@ import csv
 from transit.cli import main
 from transit.db import Database
 from transit.ingest import register_file
+from transit.pipeline import run_scenario
 
 
 def test_cli_register_prints_dataset_id(tmp_path, capsys):
@@ -34,4 +35,12 @@ def test_cli_scenario_run_prints_metrics(tmp_path, capsys):
     scenario_file.write_text('{"name":"new route","base_counts":{"R1":10},"scenario_counts":{"R1":13}}', encoding="utf-8")
 
     assert main(["--db", str(tmp_path / "db.sqlite3"), "scenario", "run", "--file", str(scenario_file)]) == 0
+    assert '"delta_value": 3' in capsys.readouterr().out
+
+
+def test_cli_scenario_compare_prints_persisted_metrics(tmp_path, capsys):
+    db_path = tmp_path / "db.sqlite3"
+    scenario_id = run_scenario(Database(db_path), "compare me", {"R1": 10}, {"R1": 13})["scenario_id"]
+
+    assert main(["--db", str(db_path), "scenario", "compare", "--scenario", scenario_id]) == 0
     assert '"delta_value": 3' in capsys.readouterr().out
