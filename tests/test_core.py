@@ -3,7 +3,7 @@ import json
 import pytest
 
 from transit.demand import assign_journeys, assign_logit, build_journeys
-from transit.ingest import validate_rows
+from transit.ingest import validate_bis_rows, validate_rows
 from transit.metrics import operating_metrics, required_vehicles
 from transit.scenarios import apply_changes
 
@@ -29,6 +29,17 @@ def test_validate_rows_rejects_duplicate_identifiers_and_sequences():
     codes = {error.code for error in report.errors}
     assert "stop_id.duplicate" in codes
     assert "stop_sequence.duplicate" in codes
+
+
+def test_validate_bis_rows_scopes_sequence_uniqueness_per_route():
+    rows = [
+        {"route_id": "R1", "route_name": "one", "stop_id": "S1", "stop_name": "a", "stop_sequence": "1", "latitude": "1", "longitude": "1"},
+        {"route_id": "R2", "route_name": "two", "stop_id": "S1", "stop_name": "a", "stop_sequence": "1", "latitude": "1", "longitude": "1"},
+        {"route_id": "R1", "route_name": "one", "stop_id": "S2", "stop_name": "b", "stop_sequence": "1", "latitude": "1", "longitude": "1"},
+    ]
+    report = validate_bis_rows(rows)
+    assert not report.valid
+    assert any(error.code == "stop_sequence.duplicate" for error in report.errors)
 
 
 def test_build_journeys_keeps_unknown_alighting_without_inventing_destination():

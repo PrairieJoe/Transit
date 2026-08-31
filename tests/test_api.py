@@ -13,3 +13,14 @@ def test_api_exposes_health_and_scenario_metrics(tmp_path):
 
     assert health == {"status": "ok"}
     assert metrics["R1"]["delta_value"] == 3
+
+
+def test_api_exposes_stop_demand_scope(tmp_path):
+    database = Database(tmp_path / "api.sqlite3")
+    dataset_id = "card-demo"
+    database.execute("INSERT INTO datasets VALUES (?,?,?,?,?,?,?,?)", (dataset_id, "cards", "CARD", "cards.csv", "hash", "1.0", "passed", "now"))
+    database.execute("INSERT INTO card_transactions VALUES (?,?,?,?,?,?,?,?,?,?)", ("t1", dataset_id, "now", None, "R1", "S1", "S2", None, "BOARDING", "OBSERVED"))
+    database.execute("INSERT INTO card_transactions VALUES (?,?,?,?,?,?,?,?,?,?)", ("t2", dataset_id, "now", None, "R1", "S1", None, None, "BOARDING", "UNKNOWN"))
+    app = create_app(database)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/datasets/{dataset_id}/demand")
+    assert endpoint(dataset_id, "stop") == {"S1": {"boardings": 2, "alightings": 0}, "S2": {"boardings": 0, "alightings": 1}}

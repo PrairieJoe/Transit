@@ -63,6 +63,35 @@ def validate_rows(
                     seen_sequences.add(sequence)
     return ValidationReport(valid=not errors, errors=errors)
 
+
+def validate_bis_rows(rows: list[dict[str, Any]]) -> ValidationReport:
+    """Validate BIS rows with stop sequence uniqueness scoped to each route."""
+    required = {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude"}
+    errors = list(validate_rows(rows, required).errors)
+    seen_route_stops: set[tuple[Any, Any]] = set()
+    sequences_by_route: dict[Any, set[int]] = {}
+    for row_number, row in enumerate(rows, start=1):
+        route_id = row.get("route_id")
+        stop_id = row.get("stop_id")
+        if route_id not in (None, "") and stop_id not in (None, ""):
+            pair = (route_id, stop_id)
+            if pair in seen_route_stops:
+                errors.append(ValidationError("route_stop.duplicate", "route_id,stop_id", f"row {row_number}: duplicate stop on route"))
+            seen_route_stops.add(pair)
+        if route_id in (None, ""):
+            continue
+        try:
+            sequence = int(row.get("stop_sequence"))
+        except (TypeError, ValueError):
+            continue
+        if sequence <= 0:
+            errors.append(ValidationError("stop_sequence.invalid", "stop_sequence", f"row {row_number}: sequence must be positive"))
+        seen = sequences_by_route.setdefault(route_id, set())
+        if sequence in seen:
+            errors.append(ValidationError("stop_sequence.duplicate", "stop_sequence", f"row {row_number}: duplicate sequence on route"))
+        seen.add(sequence)
+    return ValidationReport(valid=not errors, errors=errors)
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8-sig") as stream:
         return list(csv.DictReader(stream))
@@ -85,7 +114,7 @@ def register_file(database: Database, path: str | Path, source_type: str) -> str
         raise ValueError("source_type must be CARD or BIS")
     rows = _read_rows(source_path)
     required = {"transaction_id", "transaction_time", "boarding_stop_id"} if source_type == "CARD" else {"route_id", "route_name", "stop_id", "stop_name", "stop_sequence", "latitude", "longitude"}
-    report = validate_rows(rows, required)
+    report = validate_rows(rows, required) if source_type == "CARD" else validate_bis_rows(rows)
     file_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
     existing = database.query_one("SELECT id FROM datasets WHERE file_hash = ?", (file_hash,))
     if existing:
