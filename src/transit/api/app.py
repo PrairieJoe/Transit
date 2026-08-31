@@ -116,7 +116,7 @@ def create_app(database: Database | None = None) -> FastAPI:
             {"source_file_type": "DWTCD", "source_column": "17", "canonical_field": "boarding_stop_id", "confidence": 0.98},
             {"source_file_type": "DWTCD", "source_column": "20", "canonical_field": "alighting_stop_id", "confidence": 0.98},
         ]
-        return {"dataset_id": dataset_id, "saved": [dict(zip(("source_file_type", "source_column", "canonical_field", "confidence", "confirmed"), row)) for row in saved], "suggestions": suggestions}
+        return {"dataset_id": dataset_id, "mapping_status": _mapping_status(dataset_id), "saved": [dict(zip(("source_file_type", "source_column", "canonical_field", "confidence", "confirmed"), row)) for row in saved], "suggestions": suggestions}
 
     @app.get("/networks/{network_version}/routes")
     def network_routes(network_version: str) -> list[dict]:

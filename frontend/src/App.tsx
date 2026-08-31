@@ -58,7 +58,7 @@ export default function App() {
     if (!selectedDataset) return
     get<DatasetDetail>(`/datasets/${selectedDataset}`).then(setDatasetDetail).catch(error => setMessage(error.message))
     get<{ errors: ValidationError[] }>(`/datasets/${selectedDataset}/validation`).then(result => setValidationErrors(result.errors)).catch(error => setMessage(error.message))
-    get<{ suggestions: Mapping[] }>(`/datasets/${selectedDataset}/mapping`).then(result => setMappingSuggestions(result.suggestions)).catch(error => setMessage(error.message))
+    get<{ suggestions: Mapping[]; mapping_status: string }>(`/datasets/${selectedDataset}/mapping`).then(result => { setMappingSuggestions(result.suggestions); setMappingConfirmed(result.mapping_status === 'confirmed'); }).catch(error => setMessage(error.message))
     get<Route[]>(`/networks/${selectedDataset}/routes`).then(setRoutes).catch(error => setMessage(error.message))
     get<Stop[]>(`/networks/${selectedDataset}/stops`).then(setNetworkStops).catch(error => setMessage(error.message))
   }, [selectedDataset])
@@ -126,6 +126,7 @@ export default function App() {
       const response = await fetch(`${API}/datasets/${selectedDataset}/mapping`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true, mappings: mappingSuggestions }) })
       if (!response.ok) throw new Error(await response.text())
       setMappingConfirmed(true)
+      setDatasetDetail(detail => detail ? { ...detail, mapping_status: 'confirmed' } : detail)
       setMessage('표준 필드 매핑을 확정했습니다.')
     } catch (error) { setMessage(error instanceof Error ? error.message : '매핑 확정 실패') }
   }
