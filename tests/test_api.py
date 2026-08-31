@@ -110,3 +110,14 @@ def test_api_accepts_daily_zip_upload(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["service_date"] == "20240420"
+
+
+def test_api_http_request_can_use_database_from_fastapi_threadpool(tmp_path):
+    database = Database(tmp_path / "threaded.sqlite3")
+    database.execute("INSERT INTO datasets VALUES (?,?,?,?,?,?,?,?)", ("ds1", "sample", "DAILY", "sample.zip", "hash-thread", "1.0", "passed", "now"))
+    client = TestClient(create_app(database))
+
+    response = client.get("/datasets")
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == "ds1"

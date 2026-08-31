@@ -84,7 +84,10 @@ class Database:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
+        # FastAPI executes sync endpoints in a threadpool. The connection is
+        # shared by the injected Database instance, so SQLite must allow that
+        # handoff; endpoint writes remain serialized by the SQLite connection.
+        self.connection = sqlite3.connect(self.path, check_same_thread=False)
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
         self.connection.commit()
