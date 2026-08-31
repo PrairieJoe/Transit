@@ -56,6 +56,7 @@ def test_api_creates_and_reads_scenario_draft(tmp_path):
     app = create_app(database)
     create = next(route.endpoint for route in app.routes if route.path == "/scenarios")
     read = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}" and "GET" in route.methods)
+    status = next(route.endpoint for route in app.routes if route.path == "/scenarios/{scenario_id}/status")
 
     created = create({
         "name": "정류장 조정",
@@ -65,6 +66,7 @@ def test_api_creates_and_reads_scenario_draft(tmp_path):
 
     assert created["status"] == "draft"
     assert read(created["id"])["changes"][0]["change_type"] == "REMOVE_STOP"
+    assert status(created["id"])["status"] == "pending"
 
 
 def test_api_updates_scenario_draft(tmp_path):
