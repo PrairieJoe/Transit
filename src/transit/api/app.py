@@ -128,6 +128,20 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="network not found")
         return [{"id": route_id, "name": route["name"], "direction": route.get("direction"), "stops": route["stops"], "coordinates": route["coordinates"]} for route_id, route in network["routes"].items()]
 
+    @app.get("/networks/{network_version}/stops")
+    def network_stops(network_version: str) -> list[dict]:
+        if db is None:
+            raise HTTPException(status_code=503, detail="database is not configured")
+        rows = db.query_all(
+            "SELECT DISTINCT s.source_stop_id, s.name, s.latitude, s.longitude FROM stops s "
+            "JOIN route_stops rs ON rs.stop_id = s.id JOIN routes r ON r.id = rs.route_id "
+            "WHERE r.source_dataset_id = ? ORDER BY s.source_stop_id",
+            (network_version,),
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="network stops not found")
+        return [{"id": stop_id, "name": name, "latitude": latitude, "longitude": longitude} for stop_id, name, latitude, longitude in rows]
+
     @app.get("/networks/{network_version}/geojson")
     def network_geojson(network_version: str) -> dict:
         if db is None:

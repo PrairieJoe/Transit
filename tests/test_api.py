@@ -51,6 +51,17 @@ def test_api_lists_regional_datasets_and_routes(tmp_path):
     assert {"id", "name", "stops"} <= routes[0].keys()
 
 
+def test_api_lists_network_stops_for_route_editing(tmp_path):
+    database_path = tmp_path / "regional-stops-api.sqlite3"
+    archive = __import__("pathlib").Path(__file__).parents[1] / "data/sample/daily/DATA_20240420.zip"
+    registered = register_regional_archive(database_path, archive, "DAILY")
+    app = create_app(Database(database_path))
+    stops = next(route.endpoint for route in app.routes if route.path == "/networks/{network_version}/stops")(registered["dataset_id"])
+
+    assert stops
+    assert {"id", "name", "latitude", "longitude"} <= stops[0].keys()
+
+
 def test_api_creates_and_reads_scenario_draft(tmp_path):
     database = Database(tmp_path / "scenario-api.sqlite3")
     app = create_app(database)

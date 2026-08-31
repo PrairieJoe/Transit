@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 
 type Dataset = { id: string; dataset_id?: string; name: string; source_type: string; quality_status: string; created_at: string; members?: unknown[] }
 type Route = { id: string; name: string; direction?: string; stops: string[]; coordinates: number[][] }
+type Stop = { id: string; name: string; latitude: number; longitude: number }
 type Metric = { scope_type: string; scope_id: string; metric_name: string; base_value: number; scenario_value: number; delta_value: number }
 type DatasetDetail = Dataset & { mapping_status: string; files: { member_name: string; file_type: string; service_date?: string }[] }
 type Mapping = { source_file_type: string; source_column: string; canonical_field: string; confidence: number }
@@ -29,6 +30,7 @@ export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDataset, setSelectedDataset] = useState('')
   const [routes, setRoutes] = useState<Route[]>([])
+  const [networkStops, setNetworkStops] = useState<Stop[]>([])
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [message, setMessage] = useState('데이터셋을 선택하거나 압축파일을 업로드하세요.')
   const [uploading, setUploading] = useState(false)
@@ -44,6 +46,7 @@ export default function App() {
   const [headway, setHeadway] = useState(600)
   const [serviceStart, setServiceStart] = useState('06:00')
   const [serviceEnd, setServiceEnd] = useState('23:00')
+  const [addStopId, setAddStopId] = useState('')
 
   const refresh = async () => {
     const items = await get<Dataset[]>('/datasets')
@@ -57,6 +60,7 @@ export default function App() {
     get<{ errors: ValidationError[] }>(`/datasets/${selectedDataset}/validation`).then(result => setValidationErrors(result.errors)).catch(error => setMessage(error.message))
     get<{ suggestions: Mapping[] }>(`/datasets/${selectedDataset}/mapping`).then(result => setMappingSuggestions(result.suggestions)).catch(error => setMessage(error.message))
     get<Route[]>(`/networks/${selectedDataset}/routes`).then(setRoutes).catch(error => setMessage(error.message))
+    get<Stop[]>(`/networks/${selectedDataset}/stops`).then(setNetworkStops).catch(error => setMessage(error.message))
   }, [selectedDataset])
   useEffect(() => {
     if (!selectedDataset || !mapContainer.current) return
@@ -94,6 +98,11 @@ export default function App() {
     ;[next[index], next[target]] = [next[target], next[index]]
     return next
   })
+  const addStop = () => {
+    if (!addStopId || editedStops.includes(addStopId)) return
+    setEditedStops(stops => [...stops, addStopId])
+    setAddStopId('')
+  }
   const saveScenario = async () => {
     if (!selectedRoute) return
     setScenarioStatus('pending')
@@ -152,7 +161,7 @@ export default function App() {
         <section className="map-panel"><div className="panel-title"><span>현황 지도</span><small>{selected?.name ?? '데이터셋 미선택'}</small></div><div className="map-placeholder" ref={mapContainer}>{!selectedDataset && <div className="map-copy"><span className="map-pin">＋</span><strong>노선 지도를 불러올 준비가 되었습니다</strong><span>왼쪽에서 데이터셋을 선택하세요.</span></div>}</div></section>
         <aside className="panel routes"><div className="panel-title"><span>노선 목록</span><small>{routes.length}개</small></div>{routes.map(route => <button className={`route ${selectedRoute?.id === route.id ? 'active' : ''}`} key={route.id} onClick={() => setSelectedRoute(route)}><strong>{route.id}</strong><span>{route.name}</span><small>{route.stops.length}개 정류장</small></button>)}{routes.length === 0 && <p className="empty">검증된 일별 데이터를 선택하면 노선이 표시됩니다.</p>}</aside>
       </section>
-      <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <><div className="stop-editor">{editedStops.map((stop, index) => <div className="stop-row" key={`${stop}-${index}`}><span>{index + 1}. {stop}</span><button type="button" onClick={() => moveStop(index, -1)} disabled={index === 0}>↑</button><button type="button" onClick={() => moveStop(index, 1)} disabled={index === editedStops.length - 1}>↓</button><button type="button" onClick={() => setEditedStops(stops => stops.length > 2 ? stops.filter((_, current) => current !== index) : stops)}>삭제</button></div>)}</div><div className="edit-controls"><button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button><label>배차 <input type="number" min="60" step="60" value={headway} onChange={event => setHeadway(Number(event.target.value))} />초</label><label>운행 <input type="time" value={serviceStart} onChange={event => setServiceStart(event.target.value)} /> ~ <input type="time" value={serviceEnd} onChange={event => setServiceEnd(event.target.value)} /></label></div></>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
+      <section className="bottom"><div><p className="eyebrow">02 · SCENARIO</p><h2>{selectedRoute ? `${selectedRoute.id} 노선 조정` : '노선을 선택해 시나리오를 시작하세요'}</h2><p>{selectedRoute ? `${selectedRoute.name} · ${editMode ? editedStops.length : selectedRoute.stops.length}개 정류장` : '현황 지도에서 기존 노선의 정류장과 배차를 조정할 수 있습니다.'}</p>{editMode && <><div className="stop-editor">{editedStops.map((stop, index) => <div className="stop-row" key={`${stop}-${index}`}><span>{index + 1}. {stop}</span><button type="button" onClick={() => moveStop(index, -1)} disabled={index === 0}>↑</button><button type="button" onClick={() => moveStop(index, 1)} disabled={index === editedStops.length - 1}>↓</button><button type="button" onClick={() => setEditedStops(stops => stops.length > 2 ? stops.filter((_, current) => current !== index) : stops)}>삭제</button></div>)}</div><div className="edit-controls"><select value={addStopId} onChange={event => setAddStopId(event.target.value)}><option value="">정류장 추가 선택</option>{networkStops.filter(stop => !editedStops.includes(stop.id)).map(stop => <option value={stop.id} key={stop.id}>{stop.id} · {stop.name}</option>)}</select><button className="secondary" onClick={addStop} disabled={!addStopId}>정류장 추가</button><button className="secondary" onClick={removeLastStop}>마지막 정류장 삭제</button><label>배차 <input type="number" min="60" step="60" value={headway} onChange={event => setHeadway(Number(event.target.value))} />초</label><label>운행 <input type="time" value={serviceStart} onChange={event => setServiceStart(event.target.value)} /> ~ <input type="time" value={serviceEnd} onChange={event => setServiceEnd(event.target.value)} /></label></div></>}</div><button className="primary" disabled={!selectedRoute} onClick={editMode ? saveScenario : startEdit}>{editMode ? '시나리오 저장·실행' : '노선 편집 시작'} <span>→</span></button></section>
       {scenarioStatus && <div className={`scenario-status ${scenarioStatus}`}>시나리오 상태: <strong>{scenarioStatus}</strong></div>}
       {metrics.length > 0 && <section className="results"><div className="panel-title"><span>Base vs Scenario</span><small>최근 실행 결과</small></div><table><thead><tr><th>범위</th><th>지표</th><th>Base</th><th>Scenario</th><th>변화</th></tr></thead><tbody>{metrics.map(metric => <tr key={`${metric.scope_type}-${metric.scope_id}-${metric.metric_name}`}><td>{metric.scope_id}</td><td>{metric.metric_name}</td><td>{metric.base_value.toFixed(1)}</td><td>{metric.scenario_value.toFixed(1)}</td><td className={metric.delta_value < 0 ? 'negative' : 'positive'}>{metric.delta_value > 0 ? '+' : ''}{metric.delta_value.toFixed(1)}</td></tr>)}</tbody></table></section>}
       <div className="message">{message}</div>
