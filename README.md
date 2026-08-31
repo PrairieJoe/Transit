@@ -197,8 +197,17 @@ python -m uvicorn transit.api.server:app --reload
 제공 endpoint:
 
 - `GET /health`
+- `POST /datasets/uploads/common`, `POST /datasets/uploads/daily`
+- `GET /datasets`, `GET /datasets/{dataset_id}`
+- `GET /datasets/{dataset_id}/validation`, `GET|POST /datasets/{dataset_id}/mapping`
+- `GET /networks/{network_version}/routes`
+- `GET /networks/{network_version}/stops`
+- `GET /networks/{network_version}/geojson` (노선 LineString 및 정류장 Point)
+- `GET /routes/{route_id}`, `GET /routes/{route_id}/stops`
 - `GET /datasets/{dataset_id}/demand`
   - `?scope=route` (기본값) 또는 `?scope=stop`
+- `POST|GET /scenarios`, `GET|PATCH /scenarios/{scenario_id}`
+- `POST /scenarios/{scenario_id}/run`, `GET /scenarios/{scenario_id}/status`
 - `GET /scenarios/{scenario_id}/metrics`
 - `GET /scenarios/{scenario_id}/metrics/detail` (노선·정류장·OD·네트워크 범위)
 
@@ -213,7 +222,7 @@ npm install
 npm run dev
 ```
 
-웹 화면에서 `COMMONCD.zip`과 일자별 `DATA_YYYYMMDD.zip`을 각각 업로드하고, 등록된 일별 데이터셋의 노선을 선택할 수 있습니다. 노선 편집을 시작하면 기존 노선의 마지막 정류장을 삭제한 draft 시나리오를 저장·실행할 수 있습니다. API 주소를 바꾸려면 `VITE_API_URL` 환경변수를 지정합니다.
+웹 화면에서 `COMMONCD.zip`과 여러 일별 `DATA_YYYYMMDD.zip`을 각각 업로드하고, 등록된 일별 데이터셋의 노선과 정류장을 지도에서 확인할 수 있습니다. 노선 편집에서는 기존 정류장 추가·삭제·순서 변경, 배차간격, 운행시간대를 draft 시나리오로 저장·실행할 수 있습니다. API 주소를 바꾸려면 `VITE_API_URL` 환경변수를 지정합니다.
 
 프론트엔드 production build 검증:
 
