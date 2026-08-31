@@ -117,6 +117,12 @@ def test_api_runs_regional_route_adjustment_without_mutating_base(tmp_path):
     assert result["status"] == "completed"
     assert database.query_one("SELECT COUNT(*) FROM route_stops")[0] == routes_before
     assert database.query_one("SELECT status FROM scenarios WHERE id = ?", (scenario["id"],))[0] == "completed"
+    run_snapshot = database.query_one("SELECT status,base_snapshot,result_snapshot FROM scenario_runs WHERE scenario_id = ? ORDER BY started_at DESC LIMIT 1", (scenario["id"],))
+    assert run_snapshot[0] == "completed"
+    assert run_snapshot[1] and run_snapshot[2]
+    run(scenario["id"])
+    repeated_snapshot = database.query_one("SELECT result_snapshot FROM scenario_runs WHERE scenario_id = ? ORDER BY started_at DESC LIMIT 1", (scenario["id"],))[0]
+    assert repeated_snapshot == run_snapshot[2]
 
 
 def test_api_accepts_daily_zip_upload(tmp_path):

@@ -1,7 +1,9 @@
 """FastAPI API for data registration, map browsing, and scenarios."""
 import json
+import hashlib
 import shutil
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -258,7 +260,8 @@ def create_app(database: Database | None = None) -> FastAPI:
         row = db.query_one("SELECT status FROM scenarios WHERE id = ?", (scenario_id,))
         if not row:
             raise HTTPException(status_code=404, detail="scenario not found")
-        return {"scenario_id": scenario_id, "status": row[0]}
+        run = db.query_one("SELECT status FROM scenario_runs WHERE scenario_id = ? ORDER BY started_at DESC LIMIT 1", (scenario_id,))
+        return {"scenario_id": scenario_id, "status": run[0] if run else row[0]}
 
     @app.post("/scenarios/{scenario_id}/run")
     def run_saved_scenario(scenario_id: str) -> dict:
@@ -274,13 +277,21 @@ def create_app(database: Database | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail={"error_code": "dataset.not_ready", "message": "dataset mapping must be confirmed before analysis", "scenario_id": scenario_id})
         payload = db.query_one("SELECT payload_json FROM scenario_inputs WHERE scenario_id = ?", (scenario_id,))
         changes = json.loads(payload[0]).get("changes", []) if payload else []
+        run_id = f"run-{uuid.uuid4().hex[:12]}"
+        started_at = datetime.now(timezone.utc).isoformat()
         try:
             network = build_network(db, scenario[1])
+            base_snapshot = hashlib.sha256(json.dumps(network, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            db.execute("INSERT INTO scenario_runs (id,scenario_id,status,base_snapshot,started_at) VALUES (?,?,?,?,?)", (run_id, scenario_id, "running", base_snapshot, started_at))
             journeys = [{"id": row[0], "boarding_stop_id": row[1], "alighting_stop_id": row[2]} for row in db.query_all("SELECT id,boarding_stop_id,alighting_stop_id FROM card_transactions WHERE dataset_id = ?", (scenario[1],))]
             result = run_network_scenario(db, scenario[0], journeys, network, changes, scenario_id=scenario_id)
+            result_snapshot = hashlib.sha256(json.dumps({"network": result["scenario_network"], "metrics": result["metrics"]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            db.execute("UPDATE scenario_runs SET status = 'completed', result_snapshot = ?, completed_at = ? WHERE id = ?", (result_snapshot, datetime.now(timezone.utc).isoformat(), run_id))
             return {"scenario_id": scenario_id, "status": "completed", "metrics": result["metrics"]}
         except (KeyError, TypeError, ValueError) as error:
             db.execute("UPDATE scenarios SET status = 'failed' WHERE id = ?", (scenario_id,))
+            if db.query_one("SELECT id FROM scenario_runs WHERE id = ?", (run_id,)):
+                db.execute("UPDATE scenario_runs SET status = 'failed', error_code = ?, error_message = ?, completed_at = ? WHERE id = ?", ("scenario.run_failed", str(error), datetime.now(timezone.utc).isoformat(), run_id))
             raise HTTPException(status_code=422, detail={"error_code": "scenario.run_failed", "message": str(error), "scenario_id": scenario_id}) from error
 
     return app
