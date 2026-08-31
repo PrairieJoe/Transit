@@ -51,3 +51,15 @@ def test_register_regional_archive_indexes_members_and_service_date(tmp_path):
 def test_register_regional_archive_rejects_unknown_source_type(tmp_path):
     with pytest.raises(RegionalArchiveError, match="source_type"):
         register_regional_archive(tmp_path / "db.sqlite3", ROOT / "data/sample/daily/DATA_20240420.zip", "CARD")
+
+
+def test_register_common_and_daily_archives_separately_in_one_database(tmp_path):
+    database_path = tmp_path / "complete.sqlite3"
+    common = register_regional_archive(database_path, ROOT / "data/sample/common/COMMONCD.zip", "COMMON")
+    daily = register_regional_archive(database_path, ROOT / "data/sample/daily/DATA_20240420.zip", "DAILY")
+
+    from transit.db import Database
+    database = Database(database_path)
+    assert database.query_one("SELECT COUNT(*) FROM datasets")[0] == 2
+    assert database.query_one("SELECT COUNT(*) FROM dataset_files WHERE dataset_id = ?", (common["dataset_id"],))[0] == 5
+    assert database.query_one("SELECT COUNT(*) FROM dataset_files WHERE dataset_id = ?", (daily["dataset_id"],))[0] == 4

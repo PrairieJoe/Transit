@@ -4,6 +4,7 @@ import maplibregl from 'maplibre-gl'
 type Dataset = { id: string; dataset_id?: string; name: string; source_type: string; quality_status: string; created_at: string; members?: unknown[] }
 type Route = { id: string; name: string; direction?: string; stops: string[]; coordinates: number[][] }
 type Metric = { scope_type: string; scope_id: string; metric_name: string; base_value: number; scenario_value: number; delta_value: number }
+type DatasetDetail = Dataset & { mapping_status: string; files: { member_name: string; file_type: string; service_date?: string }[] }
 
 const API = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
@@ -29,6 +30,7 @@ export default function App() {
   const [message, setMessage] = useState('데이터셋을 선택하거나 압축파일을 업로드하세요.')
   const [uploading, setUploading] = useState(false)
   const [metrics, setMetrics] = useState<Metric[]>([])
+  const [datasetDetail, setDatasetDetail] = useState<DatasetDetail | null>(null)
   const mapContainer = useRef<HTMLDivElement>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedStops, setEditedStops] = useState<string[]>([])
@@ -44,6 +46,7 @@ export default function App() {
   useEffect(() => { refresh().catch(error => setMessage(error.message)) }, [])
   useEffect(() => {
     if (!selectedDataset) return
+    get<DatasetDetail>(`/datasets/${selectedDataset}`).then(setDatasetDetail).catch(error => setMessage(error.message))
     get<Route[]>(`/networks/${selectedDataset}/routes`).then(setRoutes).catch(error => setMessage(error.message))
   }, [selectedDataset])
   useEffect(() => {
@@ -61,6 +64,11 @@ export default function App() {
       map.on('load', () => {
         map?.addSource('routes', { type: 'geojson', data: geojson as never })
         map?.addLayer({ id: 'routes', type: 'line', source: 'routes', paint: { 'line-color': '#477b58', 'line-width': 3, 'line-opacity': .85 } })
+        const coordinates = geojson.features.flatMap(feature => (feature as { geometry?: { coordinates?: number[][] } }).geometry?.coordinates ?? [])
+        if (coordinates.length > 1) {
+          const bounds = coordinates.reduce((current, coordinate) => current.extend(coordinate as [number, number]), new maplibregl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number]))
+          map?.fitBounds(bounds, { padding: 45, maxZoom: 12 })
+        }
       })
     }).catch(error => setMessage(error.message))
     return () => map?.remove()
@@ -104,6 +112,7 @@ export default function App() {
         <label className="upload-card"><strong>일자별 데이터 ZIP</strong><span>DATA_YYYYMMDD.zip</span><input type="file" accept=".zip" onChange={event => handleUpload('daily', event.target.files?.[0])} /></label>
       </div></section>
       {uploading && <div className="notice">압축파일을 분석하고 있습니다...</div>}
+      {datasetDetail && <div className="quality-strip"><strong>{datasetDetail.quality_status === 'passed' ? '✓ 품질검사 통과' : '⚠ 품질검사 확인 필요'}</strong><span>매핑 {datasetDetail.mapping_status}</span><span>내부 파일 {datasetDetail.files.length}개</span><span>{[...new Set(datasetDetail.files.map(file => file.service_date).filter(Boolean))].join(', ') || '공통코드'}</span></div>}
       <section className="workspace">
         <aside className="panel datasets"><div className="panel-title"><span>데이터셋</span><small>{datasets.length}개 등록</small></div>{datasets.length === 0 && <p className="empty">아직 등록된 데이터가 없습니다.</p>}{datasets.map(dataset => <button className={`dataset ${dataset.id === selectedDataset ? 'active' : ''}`} key={dataset.id} onClick={() => setSelectedDataset(dataset.id)}><span><strong>{dataset.name}</strong><small>{dataset.source_type} · {dataset.id}</small></span><em className={dataset.quality_status}>{dataset.quality_status}</em></button>)}</aside>
         <section className="map-panel"><div className="panel-title"><span>현황 지도</span><small>{selected?.name ?? '데이터셋 미선택'}</small></div><div className="map-placeholder" ref={mapContainer}>{!selectedDataset && <div className="map-copy"><span className="map-pin">＋</span><strong>노선 지도를 불러올 준비가 되었습니다</strong><span>왼쪽에서 데이터셋을 선택하세요.</span></div>}</div></section>

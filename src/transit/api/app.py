@@ -59,7 +59,8 @@ def create_app(database: Database | None = None) -> FastAPI:
         if not row:
             raise HTTPException(status_code=404, detail="dataset not found")
         files = db.query_all("SELECT archive_name,member_name,file_type,file_hash,service_date FROM dataset_files WHERE dataset_id = ? ORDER BY member_name", (dataset_id,))
-        return {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "created_at": row[4], "files": [dict(zip(("archive_name", "member_name", "file_type", "file_hash", "service_date"), item)) for item in files]}
+        confirmed = db.query_one("SELECT COUNT(*) FROM dataset_mappings WHERE dataset_id = ? AND confirmed = 1", (dataset_id,))[0]
+        return {"id": row[0], "name": row[1], "source_type": row[2], "quality_status": row[3], "mapping_status": "confirmed" if confirmed else "pending", "created_at": row[4], "files": [dict(zip(("archive_name", "member_name", "file_type", "file_hash", "service_date"), item)) for item in files]}
 
     @app.get("/datasets/{dataset_id}/validation")
     def dataset_validation(dataset_id: str) -> dict:
