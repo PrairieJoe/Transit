@@ -7,4 +7,5 @@ data/transit.sqlite3
 data/uploads/
 frontend/node_modules/
 frontend/dist/
+*.log
 tests/.runtime-tmp/
