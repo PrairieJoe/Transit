@@ -213,9 +213,9 @@ python -m uvicorn transit.api.server:app --reload
 
 ## 웹 UI
 
-랜딩 페이지만 빠르게 확인하려면 프로젝트 루트의 `start-landing.cmd`를 더블클릭하세요. 프론트엔드 의존성이 없을 때만 자동으로 설치한 뒤 Vite를 실행하고 브라우저를 엽니다. 이 방식은 API를 실행하지 않으므로 데이터 업로드·분석 기능을 테스트할 때는 아래의 API 실행 절차를 사용하세요.
+랜딩 페이지와 API를 한 번에 실행하려면 프로젝트 루트의 `start-landing.cmd`를 더블클릭하세요. 필요한 Python·프론트엔드 의존성이 없을 때 자동으로 설치한 뒤 API와 Vite를 각각 실행하고 브라우저를 엽니다. API 서버는 별도 창에서 실행되며, 해당 창을 닫으면 API가 종료됩니다.
 
-2차 MVP 웹 UI는 `frontend/`에 있습니다. FastAPI를 먼저 실행한 뒤 별도 터미널에서 프론트엔드를 시작합니다.
+2차 MVP 웹 UI는 `frontend/`에 있습니다. 수동으로 실행하려면 FastAPI와 프론트엔드를 각각 시작합니다.
 
 ```bash
 python -m uvicorn transit.api.server:app --reload
